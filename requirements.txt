@@ -1,0 +1,6 @@
+# 8.4+ for YOLOE-26 (open-vocabulary detection)
+ultralytics>=8.4.0
+# 4.x keeps the face-blur model we'll use later; 5.x drops it
+opencv-python>=4.8,<5
+numpy>=1.24
+pyyaml>=6.0

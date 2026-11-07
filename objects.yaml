@@ -1,0 +1,17 @@
+# What Nemo looks for. Edit freely: changes are picked up next time you start live.py.
+#
+#   name:   what people call it ("where are my keys?")
+#   prompt: what the camera looks for: one wording or a list of them. Defaults to the name.
+#
+# Wording matters a lot. On one test photo the same mug scored 0.15 as "mug" but 0.87 as "cup",
+# and a remote 0.16 as "remote control" but 0.28 as "remote". List a few wordings: YOLOE gives each
+# box one label, so the best-fitting wording wins and the box is still called by the name below.
+# Watch the live window: it shows which wording won, e.g. "TV remote 0.28 (remote)".
+
+objects:
+  - name: keys
+    prompt: [keys, key, keychain]
+  - name: glasses
+    prompt: [glasses, eyeglasses, reading glasses]
+  - name: TV remote
+    prompt: [remote, remote control, tv remote]

@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets: API keys go in .env, never in git
+.env
+
+# Model downloads (big, re-downloaded automatically)
+*.pt
+*.ts
+
+# Photos, recordings and anything else Nemo saves while running
+data/
+runs/
+
+# OS
+.DS_Store
