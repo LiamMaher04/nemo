@@ -10,6 +10,7 @@ messages to family (Photon).
 Built in small chunks. What works so far:
 
 - [x] **Chunk 1: live detection window.** Open the laptop webcam or receive photos from the clip, run YOLOE, show boxes live.
+- [x] **Chunk 2: teach with our own photos.** Freeze a frame, fix the boxes, save: it learns in about 0.3 s, no GPU. `check.py` measures before vs after. See [docs/teach.md](docs/teach.md).
 
 ## Setup (Mac)
 
@@ -30,6 +31,8 @@ Every new Terminal window: `cd nemo` then `source .venv/bin/activate`.
 ```bash
 python live.py                  # laptop webcam
 python live.py --source push    # wait for the clip to send photos
+python teach.py                 # label frames so it learns your objects (docs/teach.md)
+python check.py                 # did teaching help? scores the test photos
 ```
 
 The first run downloads YOLOE (about 30 MB) and its text model (about 240 MB) into this folder.

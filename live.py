@@ -16,11 +16,13 @@ import cv2
 
 from nemo.camera import open_source
 from nemo.detector import Detector, load_objects
+from nemo.learning import Learned, TeachStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("nemo")
 
 GREEN = (90, 220, 120)
+ORANGE = (60, 160, 255)   # look-alikes: recognised, but not one of our items
 
 
 def draw(frame, dets, lines):
@@ -28,11 +30,12 @@ def draw(frame, dets, lines):
     scale = max(0.5, frame.shape[1] / 1000)
     for d in dets:
         x1, y1, x2, y2 = (int(v) for v in d["box"])
-        cv2.rectangle(out, (x1, y1), (x2, y2), GREEN, max(2, int(3 * scale)))
+        color = GREEN if d.get("kind", "item") == "item" else ORANGE
+        cv2.rectangle(out, (x1, y1), (x2, y2), color, max(2, int(3 * scale)))
         text = f"{d['name']} {d['conf']:.2f}" + (f" ({d['prompt']})" if d["prompt"] != d["name"].lower() else "")
         (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7 * scale, 2)
         ty = max(th + 8, y1)
-        cv2.rectangle(out, (x1, ty - th - 8), (x1 + tw + 8, ty), GREEN, -1)
+        cv2.rectangle(out, (x1, ty - th - 8), (x1 + tw + 8, ty), color, -1)
         cv2.putText(out, text, (x1 + 4, ty - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7 * scale, (20, 20, 20), 2, cv2.LINE_AA)
     for i, line in enumerate(lines):   # status lines, top-left
         y = int((24 + i * 26) * scale)
@@ -49,6 +52,8 @@ def main():
     ap.add_argument("--imgsz", type=int, default=640, help="detection size; 800+ finds small things like keys, slower")
     ap.add_argument("--device", default=None, help="cpu, mps or cuda:0 (default: automatic)")
     ap.add_argument("--no-window", action="store_true", help="print detections instead of showing a window")
+    ap.add_argument("--teach-data", default="data/teach", help="use what teach.py learned (if it exists)")
+    ap.add_argument("--no-learned", action="store_true", help="ignore what teach.py learned")
     args = ap.parse_args()
 
     objects = load_objects(args.objects)
@@ -57,7 +62,10 @@ def main():
     except (RuntimeError, ValueError) as e:
         raise SystemExit(f"\n{e}")
     detector = Detector(device=args.device)
-    detector.set_objects(objects)
+    learned = None if args.no_learned else Learned.load(TeachStore(args.teach_data).learned_path, detector.model_name)
+    detector.set_objects(objects, learned.for_detector() if learned else None)
+    if learned and learned.data:
+        log.info("Using what teach.py learned: %s", learned.summary())
     log.info("Looking for: %s", "; ".join(f"{o['name']} ({', '.join(o['prompts'])})" for o in objects))
 
     os.makedirs("data/captures", exist_ok=True)
