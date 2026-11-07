@@ -1,0 +1,35 @@
+# Secrets
+.env
+.env.*
+!.env.example
+firmware/**/secrets.h
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Spacetime
+node_modules/
+dist/
+build/
+target/
+.spacetime/
+
+# Models, data, captures (big and/or private)
+*.pt
+*.onnx
+*.engine
+data/
+captures/
+frames/
+*.mp4
+*.wav
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
