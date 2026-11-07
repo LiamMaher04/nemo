@@ -33,3 +33,6 @@ frames/
 Thumbs.db
 .vscode/
 .idea/
+
+# YOLOE text model, downloaded on first run
+mobileclip*.ts

@@ -1,0 +1,8 @@
+# Vision tools (live.py, teach.py, check.py). The FastAPI app will add its own lines.
+# 8.4+ for YOLOE-26 (open-vocabulary detection, learning from photos)
+ultralytics>=8.4.0
+# 4.x keeps the face-blur model; 5.x drops it
+opencv-python>=4.8,<5
+numpy>=1.24
+pyyaml>=6.0
+python-dotenv>=1.0

@@ -1,0 +1,24 @@
+# What Nemo looks for. Edit freely; picked up next time a tool starts.
+#
+#   id:     item_id used in Spacetime (docs/interfaces.md), lowercase with underscores
+#   name:   what people call it ("where are my keys?")
+#   prompt: what the camera looks for: one wording or a list of them. Defaults to the name.
+#
+# Wording matters a lot. On one test photo the same mug scored 0.15 as "mug" but 0.87 as "cup".
+# YOLOE-26 gives each box one label, so listing several wordings lets the best-fitting one win;
+# the box is still reported under the item's name. The first wording of each item is the team's
+# agreed prompt (CLAUDE.md); the others are alternatives to compare in live.py.
+
+objects:
+  - id: keys
+    name: keys
+    prompt: [house keys on keyring, keys, keychain]
+  - id: glasses
+    name: glasses
+    prompt: [eyeglasses, glasses, reading glasses]
+  - id: tv_remote
+    name: TV remote
+    prompt: [tv remote control, remote control, remote]
+  - id: pill_box
+    name: pill box
+    prompt: [pill organizer box, pill box, pill organiser]
