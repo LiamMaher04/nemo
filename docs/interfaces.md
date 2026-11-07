@@ -35,8 +35,8 @@ Python reports what it SAW. Spacetime decides what it MEANS (placed / carried / 
 
 | arg | type | notes |
 |---|---|---|
-| ts_ms | f64 | UTC ms since epoch (f64 to avoid bigint hassle) |
-| frame_id | f64 | backend's frame counter |
+| ts_ms | u64 | UTC ms since epoch |
+| frame_id | u64 | backend's frame counter |
 | track_id | i32 | from the tracker, -1 if none |
 | label | string | detector class, e.g. "eyeglasses" |
 | det_conf | f32 | 0 to 1 |
@@ -51,9 +51,7 @@ Python reports what it SAW. Spacetime decides what it MEANS (placed / carried / 
 | in_hand | bool | item box overlaps a hand box |
 | thumb_b64 | string | small JPEG thumbnail (~160 px wide), base64. Faces blurred. |
 
-### set_coverage(device_id: string, state: string, reason: string, ts_ms: f64)
-
-### raise_alert(item_id, type, message, ts_ms), ack_alert(id), reset_memory()
+### set_coverage(device_id: string, state: string, reason: string, ts_ms: u64)
 
 ### Setup reducers (called from the carer app)
 - `upsert_item(item_id, display_name, aliases_json, detector_prompt, importance, is_container)`
