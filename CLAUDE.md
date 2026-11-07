@@ -9,9 +9,11 @@ A wearable camera for older people living at home. It clips onto a shirt, notice
 objects get put down, and when you press its button and ask "where's my remote?" it answers out loud
 and shows the snapshot on its small screen.
 
-**Scope:** the full carer app (floor plan, pins, snapshots, setup screens, alerts UI) is EXTENDED
-scope. Don't build it unless asked. Core needs only a minimal live view: one plain page subscribed
-to `item_state` (item, room, spot, time ago) to show Spacetime updating live for the judges.
+**Scope:** the carer app is EXTENDED scope. Don't build it unless asked.
+
+**How to work in this repo:** Liam decides what gets built, step by step. Only build exactly what
+the current request asks for. Don't add features, files, endpoints or scaffolding nobody asked for.
+If something else seems needed, suggest it and wait.
 
 - Always call the product **Nemo**, or "the device" for the hardware. Never "the clip".
 - Name comes from Mnemosyne, Greek goddess of memory.
@@ -41,11 +43,11 @@ backend/ (Python, FastAPI, runs on the laptop; same code can run on a Brev GPU b
   -> room guess (QR/AprilTag markers first, walkthrough matching later)
   | HTTP: POST /v1/database/<db>/call/add_sighting
   v
-spacetime/ (SpacetimeDB module in TypeScript + React carer app)
+spacetime/ (SpacetimeDB module in TypeScript)
   tables + reducers: add_sighting, stationary rule, item_state, where_is
   |                         |
   v                         v
-agent/ (Nemotron)        minimal live view (subscribes to item_state); full carer app = extended
+agent/ (Nemotron)        carer app (extended scope, not now)
 ```
 
 - **Local first.** Demo runs on the laptop on the same phone hotspot as the device. Every URL is a
@@ -57,7 +59,7 @@ agent/ (Nemotron)        minimal live view (subscribes to item_state); full care
 
 - `firmware/` Arduino sketches for the DFR1154 (Danny, Laura)
 - `backend/` FastAPI app: /frame, /ask, vision pipeline, speech (vision: Josie)
-- `spacetime/` SpacetimeDB module + React carer app (Liam)
+- `spacetime/` SpacetimeDB module (Liam)
 - `agent/` Nemotron agent and its tools (Liam)
 - `docs/` architecture and the interface contracts. **Read `docs/interfaces.md` before changing any
   endpoint, reducer or table.** If you change a contract, update that file in the same commit.
@@ -65,7 +67,7 @@ agent/ (Nemotron)        minimal live view (subscribes to item_state); full care
 ## Build order (do not skip ahead)
 
 1. Device POSTs one JPEG per second to the laptop. (critical path)
-2. Python calls `add_sighting` on Spacetime and the row updates live in the minimal view.
+2. Python calls `add_sighting` on Spacetime and the item_state row updates.
 3. Detector finds keys/glasses/remote in real frames and feeds step 2.
 4. `/ask`: speech-to-text -> `where_is` -> one Nemotron call to phrase it -> TTS -> WAV back to device.
 5. Only then: multi-step agent, proactive alerts, DINOv2 look-alikes, room walkthrough, Brev, Maincloud.
