@@ -35,8 +35,10 @@ Then from the repo root: `python -m backend.fake_sighting seed` and `... place r
 - Written against the current TypeScript module docs but not compiled yet. If `spacetime dev` errors,
   paste the error into Claude Code.
 
-## Carer app (next)
+## Live view (core) and carer app (extended scope)
 
-Subscribe to `item_state`, `events` and `alerts`. Floor plan: one box per room, a pin per placed item
-(anchor name + "x minutes ago"), tap for `last_placed_thumb_b64`. Plus a text Ask box that POSTs to
-the backend's `/ask_text`.
+Core: one plain page subscribed to `item_state` showing item, room, spot and "x minutes ago",
+updating live. That's what proves Spacetime is doing the work during the demo.
+
+Extended, only if time allows: floor plan with pins, snapshots (`last_placed_thumb_b64`), alerts,
+setup screens, text Ask box posting to `/ask_text`.

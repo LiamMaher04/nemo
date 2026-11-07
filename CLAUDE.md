@@ -7,8 +7,11 @@ Times are Dallas time (CT). Submission was noon Sunday last year; check Devpost 
 
 A wearable camera for older people living at home. It clips onto a shirt, notices where everyday
 objects get put down, and when you press its button and ask "where's my remote?" it answers out loud
-and shows the snapshot on its small screen. A carer (family member) gets a web app with a live floor
-plan of where things are, plus alerts.
+and shows the snapshot on its small screen.
+
+**Scope:** the full carer app (floor plan, pins, snapshots, setup screens, alerts UI) is EXTENDED
+scope. Don't build it unless asked. Core needs only a minimal live view: one plain page subscribed
+to `item_state` (item, room, spot, time ago) to show Spacetime updating live for the judges.
 
 - Always call the product **Nemo**, or "the device" for the hardware. Never "the clip".
 - Name comes from Mnemosyne, Greek goddess of memory.
@@ -42,7 +45,7 @@ spacetime/ (SpacetimeDB module in TypeScript + React carer app)
   tables + reducers: add_sighting, stationary rule, item_state, where_is
   |                         |
   v                         v
-agent/ (Nemotron)        carer app (subscribes live): floor plan, pins, snapshots, Ask box
+agent/ (Nemotron)        minimal live view (subscribes to item_state); full carer app = extended
 ```
 
 - **Local first.** Demo runs on the laptop on the same phone hotspot as the device. Every URL is a
@@ -62,7 +65,7 @@ agent/ (Nemotron)        carer app (subscribes live): floor plan, pins, snapshot
 ## Build order (do not skip ahead)
 
 1. Device POSTs one JPEG per second to the laptop. (critical path)
-2. Python calls `add_sighting` on Spacetime and a pin shows up live in the React app.
+2. Python calls `add_sighting` on Spacetime and the row updates live in the minimal view.
 3. Detector finds keys/glasses/remote in real frames and feeds step 2.
 4. `/ask`: speech-to-text -> `where_is` -> one Nemotron call to phrase it -> TTS -> WAV back to device.
 5. Only then: multi-step agent, proactive alerts, DINOv2 look-alikes, room walkthrough, Brev, Maincloud.
