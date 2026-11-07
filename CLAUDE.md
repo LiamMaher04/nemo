@@ -71,9 +71,15 @@ A crude end-to-end loop beats any polished part. Get the loop working first.
 
 ## Key decisions and gotchas
 
-- **Nemotron:** build.nvidia.com API (OpenAI-compatible) by default, OpenRouter as fallback. Switch via
-  `NEMOTRON_BASE_URL` / `NEMOTRON_MODEL`. Reasoning is off by default; `/think` in the system prompt
-  turns it on (use only for the harder multi-step questions, it slows the answer).
+- **Nemotron:** build.nvidia.com API (OpenAI-compatible, base `https://integrate.api.nvidia.com/v1`),
+  OpenRouter as fallback. Agent = `NEMOTRON_AGENT_MODEL` (nvidia/nemotron-3.5-lightning-30b-a3b).
+  Snapshot vision = `NEMOTRON_VL_MODEL` (Nemotron 3.5 Super VL). Thinking is toggled per call with
+  `extra_body={"chat_template_kwargs":{"enable_thinking": bool}}` (plus `reasoning_budget`); keep it
+  off for quick spoken answers, on for multi-step carer questions. Streamed thinking arrives in
+  `delta.reasoning_content`, never speak that, only `delta.content`.
+- **Spacetime:** database `nemodb-g8356` on Maincloud (`spacetime dev nemodb-g8356 --server maincloud`).
+  The laptop needs internet anyway for the Nemotron API, so Maincloud is the default. Local
+  `spacetime start` is the fallback if the venue internet dies.
 - **Spacetime from Python:** no Python SDK. Call reducers over HTTP:
   `POST {SPACETIME_URL}/v1/database/{SPACETIME_DB}/call/{reducer}` with a JSON array of the reducer's
   arguments as the body. Check the current docs (spacetimedb.com/docs) for auth headers.
