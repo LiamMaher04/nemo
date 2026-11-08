@@ -55,6 +55,9 @@ def wait_until_sent(timeout_s: float = 25) -> bool:
 
 
 def main() -> None:
+    if not settings.CARER_ALERTS:
+        print("CARER_ALERTS is off in .env, so this test can't text anyone. Set CARER_ALERTS=on to run it.")
+        return
     try:
         httpx.post(f"{settings.NOTIFIER_URL}/alert", json={}, timeout=5)
     except Exception:

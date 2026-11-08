@@ -309,7 +309,8 @@ export const add_sighting = spacetimedb.reducer(
         thumb_b64: args.thumb_b64,
         spot_description: prev?.spot_description ?? '',
         last_seen_ts_ms: ts,
-        confidence: args.det_conf * args.area_conf,
+        // No area yet (area_id "" until DINOv2 area matching lands): use the detection alone.
+        confidence: args.area_id === '' ? args.det_conf : args.det_conf * args.area_conf,
         candidates_json: args.candidates_json,
       };
       const spotChanged = !prev || prev.area_id !== args.area_id || prev.furniture !== args.furniture;

@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from backend import agent, alerts, settings, spacetime_client, speech
+from backend import agent, alerts, frames, settings, spacetime_client, speech
 
 log = logging.getLogger("nemo.backend")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -43,8 +43,18 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:
         log.warning("could not schedule check_alerts in Spacetime: %s", exc)
     sender = asyncio.create_task(alerts.sender_loop())
+
+    # Vision: load YOLOE in the background (frames that arrive meanwhile are skipped), then pull
+    # frames from Nemo if FRAME_SOURCE=pull. POST /frame works either way.
+    background = [sender, asyncio.create_task(asyncio.to_thread(frames.warm_up))]
+    if settings.FRAME_SOURCE == "pull":
+        if settings.NEMO_JPG_URL:
+            background.append(asyncio.create_task(frames.pull_loop()))
+        else:
+            log.error("FRAME_SOURCE=pull but NEMO_JPG_URL is empty: not pulling frames")
     yield
-    sender.cancel()
+    for task in background:
+        task.cancel()
 
 
 app = FastAPI(title="Nemo backend", lifespan=lifespan)
@@ -72,6 +82,8 @@ def health() -> dict:
         "fps": _frames_per_second(now),
         "seconds_since_last_frame": round(now - last_frame_at, 1) if last_frame_at else None,
         "last_device_id": last_device_id,
+        "frame_source": settings.FRAME_SOURCE,
+        "vision": {**frames.stats, "avg_vision_ms_last_20": frames.avg_vision_ms()},
     }
 
 
@@ -102,6 +114,12 @@ async def frame(request: Request) -> dict:
         len(body),
         (time.perf_counter() - started) * 1000,
     )
+
+    # Vision runs in the background so Nemo isn't kept waiting. Busy = skip this frame.
+    if frames._busy.locked():
+        frames.stats["skipped_busy"] += 1
+        return {"ok": True, "skipped": "busy"}
+    asyncio.create_task(asyncio.to_thread(frames.handle, body))
     return {"ok": True}
 
 

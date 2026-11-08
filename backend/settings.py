@@ -34,6 +34,8 @@ OPENROUTER_MODEL: str = _clean(os.getenv("OPENROUTER_MODEL"), "nvidia/nemotron-3
 
 NOTIFIER_PORT: int = int(_clean(os.getenv("NOTIFIER_PORT"), "8100"))
 NOTIFIER_URL: str = f"http://127.0.0.1:{NOTIFIER_PORT}"
+# "on" (default) texts the carer; "off" never texts anyone (for testing). Alerts are still raised.
+CARER_ALERTS: bool = _clean(os.getenv("CARER_ALERTS"), "on").lower() not in ("off", "false", "0", "no")
 
 STT_MODEL: str = _clean(os.getenv("STT_MODEL"), "small.en")  # faster-whisper model name
 TTS_PROVIDER: str = _clean(os.getenv("TTS_PROVIDER"), "local").lower()  # "local" | "elevenlabs"
@@ -42,5 +44,10 @@ VOICES_DIR: Path = REPO_ROOT / "data" / "voices"
 ELEVENLABS_API_KEY: str = _clean(os.getenv("ELEVENLABS_API_KEY"), "")
 ELEVENLABS_VOICE_ID: str = _clean(os.getenv("ELEVENLABS_VOICE_ID"), "")
 
+FRAME_SOURCE: str = _clean(os.getenv("FRAME_SOURCE"), "post").lower()  # "post" | "pull"
+NEMO_JPG_URL: str = _clean(os.getenv("NEMO_JPG_URL"), "")  # e.g. http://172.20.10.9/jpg, for "pull"
+
 CAPTURES_DIR: Path = REPO_ROOT / "captures"
+FRAMES_DIR: Path = CAPTURES_DIR / "frames"  # the last FRAMES_KEPT kept frames, <frame_id>.jpg
+FRAMES_KEPT: int = 60
 LATEST_FRAME: Path = CAPTURES_DIR / "latest.jpg"

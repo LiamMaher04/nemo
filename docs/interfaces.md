@@ -12,6 +12,25 @@ commit as the code change, and tell the team.
 - The device captures about 5 to 10 frames a second and sends only the sharpest one each second.
 - Resolution 1024 px wide or more (XGA, 1024x768; keys are tiny).
 - The backend also drops blurry and near-duplicate frames before running any models.
+- The reply comes straight away (`{"ok": true}`, or `{"ok": true, "skipped": "busy"}`); vision
+  runs in the background.
+
+### Frame source (`FRAME_SOURCE` in `.env`)
+- `post` (default): Nemo POSTs each JPEG to `/frame`, as above.
+- `pull`: the backend fetches Nemo's `GET /jpg` at `NEMO_JPG_URL` (e.g. `http://172.20.10.9/jpg`)
+  once a second.
+
+Both go through the same handler (`backend/frames.py`):
+1. `backend.vision.process(jpeg, frame_id, ts_ms)` (Josie's code). `frame_id` keeps counting up
+   across restarts (it carries on from the newest saved frame); `ts_ms` is UTC ms.
+2. For a kept frame: `add_sighting` once per sighting, then `add_frame` once, over HTTP.
+3. The kept frame is saved as `captures/frames/<frame_id>.jpg`; only the last 60 are kept, for the
+   later Super VL step.
+- Only one frame is processed at a time. A frame that arrives while another is still being
+  processed (or while YOLOE is loading at startup) is skipped, not queued.
+- Each frame logs vision time, Spacetime time and total. `GET /health` adds `frame_source` and
+  `vision` (processed, kept, dropped, skipped_busy, spacetime_errors, avg_vision_ms_last_20).
+- Until DINOv2 area matching lands, `area_id` is `""` and `area_conf` is `0.0`.
 
 ### POST /ask
 - The wearer holds the button and asks out loud. The device records while the button is held.
@@ -160,7 +179,7 @@ time. A `used` event's `from_json` is `{"missing_since_ts"}` and `to_json` is th
   - **Ambiguous** (`item_id` `""`, e.g. a small DINOv2 margin): stop, change nothing.
   - Otherwise count sightings in a row in the same area and furniture. Once that reaches
     `CONFIRM_FRAMES`, update `item_state` (state `"placed"`, area_id, furniture, rel_pos_json,
-    last_placed_ts_ms, thumb_b64, confidence = det_conf x area_conf, candidates_json,
+    last_placed_ts_ms, thumb_b64, confidence = det_conf x area_conf (det_conf alone while area_id is ""), candidates_json,
     last_seen_ts_ms). This is a noise filter: one stray sighting somewhere else changes nothing.
   - Write a `placed` event only when the area or furniture actually changes.
 - **Missing from its furniture** (`add_frame`): if an important item (importance 3) is placed on
@@ -251,7 +270,7 @@ and calls `mark_alert_sent(id, true)`. If the notifier fails it leaves the row u
 next round, up to 3 tries per alert (counted in memory, so a backend restart tries again). An
 alert it gave up on stays unsent, which blocks new alerts of that type until it's cleared.
 
-**While the backend runs, these are real texts to `CARER_PHONE`.**
+**While the backend runs with `CARER_ALERTS=on` (the default), these are real texts to `CARER_PHONE`.** Set `CARER_ALERTS=off` in `.env` for testing: `notify()` then never contacts the notifier (so nothing is texted by any route) and the sender loop doesn't run. Alerts are still raised in Spacetime and stay unsent; `reset_memory` clears them, and turning it back on sends any that are still waiting.
 
 ### Still to build
 

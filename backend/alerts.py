@@ -21,7 +21,13 @@ log = logging.getLogger("nemo.alerts")
 
 
 def notify(type: str, message: str) -> tuple[bool, str]:
-    """POST the alert to the notifier. Returns (ok, error). Never raises."""
+    """POST the alert to the notifier. Returns (ok, error). Never raises.
+
+    With CARER_ALERTS=off this never contacts the notifier, so nothing is ever texted.
+    """
+    if not settings.CARER_ALERTS:
+        log.info("CARER_ALERTS is off: not texting %s (%r)", type, message)
+        return False, "CARER_ALERTS is off"
     try:
         r = httpx.post(f"{settings.NOTIFIER_URL}/alert", json={"type": type, "message": message}, timeout=30.0)
         body = r.json()
@@ -75,7 +81,14 @@ def send_pending_once() -> int:
 
 
 async def sender_loop() -> None:
-    """Every SEND_EVERY_S seconds, text any unsent carer alerts. Runs until cancelled."""
+    """Every SEND_EVERY_S seconds, text any unsent carer alerts. Runs until cancelled.
+
+    With CARER_ALERTS=off it doesn't run at all: alerts raised in Spacetime stay unsent (and are
+    cleared by reset_memory), so turning it back on can send any that are still waiting.
+    """
+    if not settings.CARER_ALERTS:
+        log.info("CARER_ALERTS is off: the alert sender is not running (no texts)")
+        return
     log.info("alert sender running every %d s", SEND_EVERY_S)
     while True:
         try:
