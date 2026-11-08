@@ -1,0 +1,10 @@
+# Photos and frames of our rooms must never be committed (the repo is public).
+test_images/
+captures/
+frames/
+snapshots/
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.heif
