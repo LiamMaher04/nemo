@@ -60,6 +60,10 @@ FURNITURE: dict[str, list[str]] = {
     "chair": ["chair", "armchair", "office chair"],
     "shelf": ["shelf", "bookshelf", "wall shelf"],
     "counter": ["counter", "kitchen counter", "countertop", "bathroom counter"],
+    # Wordings describe the cabinet, not the screen, so the television itself doesn't fire.
+    "tv stand": ["tv stand", "media console", "low cabinet under a television", "low wooden media cabinet"],
+    # Wordings say "doors" so they lean to closed cupboards, not open shelves.
+    "cupboard": ["cupboard", "wardrobe", "cabinet with doors", "closet doors"],
 }
 
 # An item whose centre is outside every furniture box is matched to the nearest furniture

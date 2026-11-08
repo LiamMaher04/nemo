@@ -3,12 +3,16 @@
     python -m backend.vision.run                  # webcam 0
     python -m backend.vision.run --camera 1       # another camera
     python -m backend.vision.run --folder path/   # every .jpg / .jpeg in a folder, in name order
+    python -m backend.vision.run --url http://<device-ip>/jpg   # poll a JPEG URL as fast as it answers
     add --show to see the boxes (folder mode: press any key for the next image, q to quit)
 """
 
 import argparse
+import http.client
 import json
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -47,6 +51,23 @@ def frames_from_camera(index: int) -> Iterator[bytes]:
         cap.release()
 
 
+def frames_from_url(url: str) -> Iterator[bytes]:
+    """Fetch a JPEG from the URL again and again, as fast as it answers."""
+    while True:
+        try:
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                body = resp.read()
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, ConnectionError) as exc:
+            print(f"fetch failed: {exc}; retrying in 1 s", flush=True)
+            time.sleep(1)
+            continue
+        if not body.startswith(b"\xff\xd8"):
+            print(f"not a JPEG ({len(body)} bytes); retrying in 1 s", flush=True)
+            time.sleep(1)
+            continue
+        yield body
+
+
 def short(report: dict) -> str:
     """One line, with thumb_b64 shown as its length only."""
     shown = {k: (f"<{len(v)} chars>" if k == "thumb_b64" else v) for k, v in report.items()}
@@ -72,7 +93,9 @@ def draw(jpeg_bytes: bytes, result: VisionResult) -> np.ndarray:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run Nemo vision on the webcam or a folder of JPEGs.")
-    parser.add_argument("--folder", type=Path, help="folder of JPEGs (default: webcam)")
+    source_group = parser.add_mutually_exclusive_group()
+    source_group.add_argument("--folder", type=Path, help="folder of JPEGs (default: webcam)")
+    source_group.add_argument("--url", help="URL that returns one JPEG per request, e.g. http://<device-ip>/jpg")
     parser.add_argument("--camera", type=int, default=0, help="webcam index (default 0)")
     parser.add_argument("--show", action="store_true", help="open a window with the boxes drawn")
     args = parser.parse_args()
@@ -80,7 +103,12 @@ def main() -> None:
     print(f"loading YOLOE on {detector.pick_device()} ...", flush=True)
     print(f"model ready in {detector.load():.1f}s", flush=True)
 
-    source = frames_from_folder(args.folder) if args.folder else frames_from_camera(args.camera)
+    if args.folder:
+        source = frames_from_folder(args.folder)
+    elif args.url:
+        source = frames_from_url(args.url)
+    else:
+        source = frames_from_camera(args.camera)
     frame_id = 0
     try:
         for jpeg_bytes in source:
