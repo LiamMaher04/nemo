@@ -289,8 +289,12 @@ time. A `used` event's `from_json` is `{"missing_since_ts"}` and `to_json` is th
   - **Ambiguous** (`item_id` `""`, e.g. a small DINOv2 margin): stop, change nothing.
   - Otherwise count sightings in a row in the same area and furniture. Once that reaches
     `CONFIRM_FRAMES`, update `item_state` (state `"placed"`, area_id, furniture, rel_pos_json,
-    last_placed_ts_ms, thumb_b64, confidence = det_conf x area_conf (det_conf alone while area_id is ""), candidates_json,
-    last_seen_ts_ms). This is a noise filter: one stray sighting somewhere else changes nothing.
+    thumb_b64, confidence = det_conf x area_conf (det_conf alone while area_id is ""), candidates_json,
+    last_seen_ts_ms on every confirmed sighting). This is a noise filter: one stray sighting
+    somewhere else changes nothing.
+  - `last_placed_ts_ms` is when it was put in this spot: it changes only when the area or
+    furniture changes (and `spot_description` is cleared then), not on every sighting. So
+    `set_spot_description` for a placement still matches while the item sits there.
   - Write a `placed` event only when the area or furniture actually changes.
 - **Missing from its furniture** (`add_frame`): if an important item (importance 3) is placed on
   furniture X in area A, and a frame in area A has X in view, sharpness above `FRAME_SHARP_MIN`,
@@ -325,10 +329,12 @@ After each kept frame (`vl.after_frame`), in the background:
   floor is 0.20), the sighting is reported as `pill_box` the same way. Only the pill bottle: it's the
   item the reminders and carer alerts depend on, and nothing else we track looks like one. The
   2-in-a-row rule still applies, so one such frame changes nothing.
-- **Spot description**: when a sighting from this frame made Spacetime place an item
-  (`item_state.last_placed_ts_ms` equals the frame's `ts_ms`) and the description is empty, Super
-  VL describes the spot in one sentence, told which furniture Spacetime says it's on, and
-  `set_spot_description` stores it. `where_is` returns it as `spot_description`.
+- **Spot description**: when an item seen in this frame has a placement with no usable description
+  (empty, or "unclear"), the frame is within 60 s of `item_state.last_placed_ts_ms`, and it shows
+  the item in the same area and furniture as `item_state`, Super VL describes the spot in one
+  sentence, told which furniture Spacetime says it's on, and `set_spot_description` stores it.
+  Up to 3 tries per placement (`DESCRIBE_TRIES`); Super VL may answer "unclear", which is never
+  stored. `where_is` returns it as `spot_description`.
 - **Scene check** (`VL_SCENE_CHECK`, every `VL_SCENE_EVERY_S` = 60 s): indoors or outdoors from the
   newest kept frame, whole frame at 512 px, written with `set_scene`.
 

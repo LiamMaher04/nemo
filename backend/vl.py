@@ -175,8 +175,19 @@ def describe_spot(jpeg: bytes, bbox_json: str, item_name: str, furniture: str = 
     prompt = (f"The object inside the green box is the person's {item_name}.{on} In one short spoken "
               f"sentence of at most 14 words, say exactly where it is using the things around it, for "
               f"example 'on the desk between the lamp and the water bottles'. Start with 'on', 'by', 'in' "
-              f"or 'under'. Don't mention the box, the photo or the {item_name} itself.")
-    return _clean_sentence(ask_image(crop, prompt, max_tokens=40))
+              f"or 'under'. Don't mention the box, the photo or the {item_name} itself. If you can't "
+              f"see clearly where it is, answer 'unclear'.")
+    text = _clean_sentence(ask_image(crop, prompt, max_tokens=40))
+    return "" if is_unclear(text) else text
+
+
+_UNCLEAR = ("unclear", "can't tell", "cannot tell", "can't see", "cannot see", "not sure", "unsure")
+
+
+def is_unclear(description: str) -> bool:
+    """An empty or "unclear" spot description: not worth storing, worth another try."""
+    d = description.strip().lower()
+    return not d or any(u in d for u in _UNCLEAR)
 
 
 def second_opinion(jpeg: bytes, bbox_json: str, candidates: list[tuple[str, str]]) -> str:
@@ -296,6 +307,9 @@ def _describe_job(item_id: str, placed_ts_ms: float, jpeg: bytes, bbox_json: str
     if text:
         st.call("set_spot_description", item_id, placed_ts_ms, text)
         log.info("spot described: %s -> %r", item_id, text)
+    else:
+        log.info("spot description for %s came back empty or unclear (try %d of %d)", item_id,
+                 _describe_tries.get((item_id, placed_ts_ms), 1), DESCRIBE_TRIES)
 
 
 MIN_BOX_PX = 80  # a box smaller than this (longest side) is too little to identify from; don't ask
@@ -393,8 +407,15 @@ def _second_opinion_job(sighting: dict[str, Any], jpeg: bytes) -> None:
     log.info("super vl second opinion: %r is the %s (frame %s)", sighting["label"], chosen, sighting["frame_id"])
 
 
+DESCRIBE_TRIES = 3  # Super VL tries per placement while the description is empty or "unclear"
+DESCRIBE_WINDOW_MS = 60_000  # ... and only while the item is seen within this long of being placed
+_describe_tries: dict[tuple[str, float], int] = {}  # (item_id, last_placed_ts_ms) -> tries so far
+
+
 def _describe_if_just_placed(seen: dict[str, dict[str, Any]], ts_ms: float, jpeg: bytes) -> None:
-    """For items in `seen` that Spacetime placed from this frame, queue a spot description."""
+    """Queue a spot description for items in `seen` (seen in this frame) whose current placement
+    has no usable description yet: the frame that placed them, then later frames of the same spot
+    within DESCRIBE_WINDOW_MS, up to DESCRIBE_TRIES tries per placement."""
     if not seen:
         return
     where = " OR ".join(f"item_id = '{i}'" for i in seen)
@@ -404,9 +425,23 @@ def _describe_if_just_placed(seen: dict[str, dict[str, Any]], ts_ms: float, jpeg
         log.warning("could not read item_state for spot descriptions: %s", exc)
         return
     for r in rows:
-        if abs(r["last_placed_ts_ms"] - ts_ms) < 1.0 and not r["spot_description"]:
-            submit(f"describe:{r['item_id']}", _describe_job, r["item_id"], r["last_placed_ts_ms"], jpeg,
-                   seen[r["item_id"]]["bbox_json"], r.get("furniture", ""), r.get("area_id", ""))
+        s = seen[r["item_id"]]
+        placed = r["last_placed_ts_ms"]
+        if not is_unclear(r["spot_description"]):
+            continue  # already described
+        if not (placed - 1.0 <= ts_ms <= placed + DESCRIBE_WINDOW_MS):
+            continue  # too long after it was put down
+        if s.get("area_id", r["area_id"]) != r["area_id"] or s.get("furniture", r["furniture"]) != r["furniture"]:
+            continue  # this frame shows it somewhere else (it may be moving): don't describe the old spot
+        key = (r["item_id"], placed)
+        if _describe_tries.get(key, 0) >= DESCRIBE_TRIES:
+            continue
+        if submit(f"describe:{r['item_id']}", _describe_job, r["item_id"], placed, jpeg,
+                  s["bbox_json"], r.get("furniture", ""), r.get("area_id", "")):
+            _describe_tries[key] = _describe_tries.get(key, 0) + 1
+    if len(_describe_tries) > 200:  # forget old placements
+        for k in [k for k in _describe_tries if ts_ms - k[1] > DESCRIBE_WINDOW_MS]:
+            _describe_tries.pop(k, None)
 
 
 def after_frame(frame_id: int, ts_ms: float, jpeg: bytes, sightings: list[dict[str, Any]]) -> None:

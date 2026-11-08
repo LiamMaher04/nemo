@@ -310,22 +310,24 @@ export const add_sighting = spacetimedb.reducer(
 
     if (track.streak_count >= CONFIRM_FRAMES) {
       const prev = ctx.db.item_state.item_id.find(id);
+      const spotChanged = !prev || prev.area_id !== args.area_id || prev.furniture !== args.furniture;
       const row = {
         item_id: id,
         state: 'placed',
         area_id: args.area_id,
         furniture: args.furniture,
         rel_pos_json: args.rel_pos_json,
-        last_placed_ts_ms: ts,
+        // When it was put in this spot: only changes when the spot does. (It used to move on every
+        // sighting, so a Super VL description for the placement was always "too late" to be kept.)
+        last_placed_ts_ms: spotChanged || !prev ? ts : prev.last_placed_ts_ms,
         thumb_b64: args.thumb_b64,
-        spot_description: prev?.spot_description ?? '',
-        last_seen_ts_ms: ts,
-        // No area yet (area_id "" until DINOv2 area matching lands): use the detection alone.
+        // Describes the old spot when the spot changes, so it's dropped then.
+        spot_description: spotChanged ? '' : (prev?.spot_description ?? ''),
+        last_seen_ts_ms: ts, // every sighting
+        // No area (area_id "" when DINOv2 can't tell): use the detection alone.
         confidence: args.area_id === '' ? args.det_conf : args.det_conf * args.area_conf,
         candidates_json: args.candidates_json,
       };
-      const spotChanged = !prev || prev.area_id !== args.area_id || prev.furniture !== args.furniture;
-      if (spotChanged) row.spot_description = ''; // describes the old spot, so drop it
 
       if (prev) {
         ctx.db.item_state.item_id.update(row);
