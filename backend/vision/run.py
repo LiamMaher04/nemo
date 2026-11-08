@@ -7,6 +7,7 @@
     add --fps N to change the webcam / --url frame rate (default 1, like Nemo; 0 = no limit)
     add --show to see the boxes (folder mode: press any key for the next image, q to quit)
     add --save backend/vision/captures/ to keep every kept frame (faces blurred) as a JPEG
+    add --area couch to save every kept frame straight into REFS_DIR/areas/couch/ (references, no sorting)
 """
 
 import argparse
@@ -22,7 +23,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from backend.vision import detector, pipeline, process, settings
+from backend.vision import classes, detector, pipeline, process, settings
 from backend.vision.pipeline import VisionResult
 
 WINDOW = "Nemo vision"
@@ -177,7 +178,15 @@ def main() -> None:
     parser.add_argument("--show", action="store_true", help="open a window with the boxes drawn")
     parser.add_argument("--save", type=Path, metavar="DIR",
                         help="save every kept frame (faces blurred) as a JPEG in DIR; inside the repo DIR must be gitignored")
+    parser.add_argument("--area", metavar="NAME",
+                        help="label this capture as area NAME: kept frames are saved straight into "
+                             "REFS_DIR/areas/NAME/ (or into --save DIR if given)")
     args = parser.parse_args()
+    if args.area:
+        note = "" if args.area in classes.AREA_IDS else " (test only, not a seed area_id)"
+        if not args.save:
+            args.save = settings.REFS_DIR / "areas" / args.area
+        print(f"area label: {args.area}{note}; kept frames go to {args.save}", flush=True)
     save_dir = check_save_dir(args.save) if args.save else None
     run_stamp = time.strftime("%Y%m%d-%H%M%S")
 
