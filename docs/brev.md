@@ -29,11 +29,19 @@ Restart if asked, open "Ubuntu 22.04" from the Start menu and make a user.
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/brevdev/brev-cli/main/bin/install-latest.sh)"
 ```
 
+If it warns that `~/.local/bin` is not in your PATH (it did on a fresh Ubuntu 22.04), add it once:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
+
 ```bash
 brev --version
 ```
 
-Don't use `sudo`. If it says `Failed to fetch release info from GitHub API`, the hotspot or venue
+Don't use `sudo`. Every command here goes in the Ubuntu window (prompt `you@LAPTOP...$`), not
+PowerShell, where `curl` is a different program. Get there from PowerShell with
+`wsl -d Ubuntu-22.04`. If it says `Failed to fetch release info from GitHub API`, the hotspot or venue
 has hit GitHub's rate limit: try again on another network.
 
 ## 3. Log in
@@ -147,11 +155,23 @@ brev shell nemo-vision
 ```
 
 ```bash
-cd ~/workspace/nemo && source .venv/bin/activate && nohup uvicorn backend.vision_server:app --host 127.0.0.1 --port 8001 > vision.log 2>&1 &
+cd ~/workspace/nemo && source .venv/bin/activate
+```
+
+The prompt should start with `(.venv)`. Then start the server in the background. The empty
+`LD_LIBRARY_PATH=` matters: Brev's image puts its own CUDA 13.2 and cuDNN 9.26 first on the
+library path, and torch then fails on its first convolution with
+`CUDNN_STATUS_SUBLIBRARY_LOADING_FAILED`. Clearing it makes torch use the CUDA libraries that
+came with it.
+
+```bash
+LD_LIBRARY_PATH= nohup uvicorn backend.vision_server:app --host 127.0.0.1 --port 8001 > vision.log 2>&1 &
 ```
 
 The first start downloads YOLOE and DINOv2, so give it a minute. Watch for
-`vision ready on cuda` (Ctrl+C only stops the watching, not the server):
+`vision ready on cuda` (Ctrl+C only stops the watching, not the server). If the log shows a
+traceback and `/health` says `"loaded": false`, stop it with `pkill -f vision_server` and check
+the line above was run exactly, from `~/workspace/nemo`, with `(.venv)` showing.
 
 ```bash
 tail -f vision.log
@@ -170,10 +190,18 @@ and the same settings as the laptop. Then `exit`. The server keeps running.
 brev port-forward nemo-vision --port 8001:8001
 ```
 
-Leave that terminal open. Check from Windows, in PowerShell:
+That window is now busy holding the tunnel and won't take typing. Leave it open; closing it or
+pressing Ctrl+C closes the tunnel. If the tunnel ever won't come up, plain SSH does the same
+(it also sits silently while open):
 
 ```bash
-curl.exe http://localhost:8001/health
+ssh -N -L 8001:localhost:8001 nemo-vision
+```
+
+Check from Windows, in a separate PowerShell window. It should print the same JSON as step 8:
+
+```bash
+curl.exe http://127.0.0.1:8001/health
 ```
 
 ## 10. Point the backend at it
@@ -181,17 +209,21 @@ curl.exe http://localhost:8001/health
 In the laptop's `.env`:
 
 ```
-VISION_URL=http://localhost:8001
+VISION_URL=http://127.0.0.1:8001
 ```
 
-Restart the backend. Its log should say `vision is REMOTE at http://localhost:8001: loaded=True on
-cuda`, and `http://localhost:8000/health` shows `"mode": "remote"` under `vision`. Each frame's
-log line now reads `vision 300 ms (server 60 ms, network 240 ms)`.
+Use `127.0.0.1`, not `localhost`: on Windows `localhost` tries IPv6 first and costs about 2 s
+every time the connection is reopened (measured: about 2050 ms network with `localhost`, 4 to
+14 ms with `127.0.0.1` on the laptop). The WSL tunnel answers on both.
 
-If `network` is about 2000 ms on most frames, try `VISION_URL=http://127.0.0.1:8001`. On Windows,
-`localhost` tries IPv6 first and waits about 2 s before IPv4 whenever a connection has gone idle.
-Tested on the laptop: `localhost` gave about 2050 ms network, `127.0.0.1` gave 4 to 14 ms. (Check
-`curl.exe http://127.0.0.1:8001/health` works first, since the tunnel comes through WSL.)
+Restart the backend. Its log should say `vision is REMOTE at http://127.0.0.1:8001: loaded=True
+on cuda (NVIDIA A10G)`, and `http://localhost:8000/health` shows `"mode": "remote"` under
+`vision`. Each frame's log line reads `vision N ms (server N ms, network N ms)`.
+
+Measured on 8 Nov (g5.xlarge, A10G, laptop on hotel WiFi, desk frames replayed): about 240 to
+260 ms a frame (server about 90 ms, network about 150 ms), against 1.3 to 3.1 s on the laptop's
+CPU. The first frame after the server starts can take over 3 s while the GPU warms up, so it's
+skipped once with a warning; that's expected.
 
 If a frame isn't answered within 3 s it's skipped, with one warning line at most every 30 s. The
 backend doesn't switch back to the laptop on its own.
@@ -202,8 +234,11 @@ backend doesn't switch back to the laptop on its own.
 brev stop nemo-vision
 ```
 
-Next time: `brev start nemo-vision`, `brev refresh`, then steps 8, 9 and 10 again. The code,
-venv, settings and photos are kept.
+Next time: `brev start nemo-vision`, `brev refresh`, then steps 8 and 9 again (10 is already in
+`.env`). The code, venv, settings and photos are kept.
+
+Disk bills at $0.12 per GB per month even while the box is stopped. Check its size on the
+instance page at brev.nvidia.com.
 
 After the hackathon, `brev delete nemo-vision` removes it for good, photos included. It can't be
 undone.
