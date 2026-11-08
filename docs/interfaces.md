@@ -81,6 +81,20 @@ This replaces the earlier plan of Nemo polling `GET /say` (not built).
 
 The OLED only ever shows eyes (awake when on, closed when off). Nothing from the backend goes on it.
 
+### GET /live (the "what Nemo sees" page)
+A browser page served by the backend for demos and debugging: `http://<laptop>:8000/live`. It shows
+the latest processed frame with YOLOE's boxes drawn on it (green = identified item, amber = unsure
+with its look-alike candidates, blue = furniture), DINOv2's area vote and confidence, the sharpness
+score against the gate, kept/dropped verdicts, per-frame timings, a feed of recent frames, what
+Spacetime currently remembers (with thumbnails), and the last question and answer. Everything on it
+comes from the real pipeline output; nothing is drawn that a model didn't return.
+- `GET /live/state`: JSON the page polls every 0.5 s: `frame` (frame_id, kept, drop_reason,
+  sharpness, sharpness_gate, area_id, area_conf, items_seen, sightings without thumbnails,
+  furniture boxes, vision_ms, spacetime_ms), `stats`, `feed` (last 40 frames), `memory`
+  (item_state rows with spot phrases and thumb_b64, cached 2 s), `last_ask`, `config`.
+- `GET /live/frame.jpg`: the latest processed JPEG (kept or dropped), `204` before the first frame.
+The page reads from the backend only, never from Nemo, so it doesn't compete for Nemo's camera.
+
 ## 2. Backend -> Spacetime (reducer calls over HTTP)
 
 `POST {SPACETIME_URL}/v1/database/{SPACETIME_DB}/call/{reducer}`

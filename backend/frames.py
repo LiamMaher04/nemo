@@ -9,6 +9,7 @@ without running the app stay quick.
 """
 
 import asyncio
+import json
 import logging
 import threading
 import time
@@ -29,6 +30,56 @@ _vision_ms: deque[float] = deque(maxlen=20)  # process() time of the last 20 pro
 history: deque[dict] = deque(maxlen=200)  # per processed frame: frame_id, kept, vision_ms, spacetime_ms
 _next_frame_id = 0
 stats = {"processed": 0, "kept": 0, "dropped": 0, "skipped_busy": 0, "spacetime_errors": 0}
+
+# What the live page shows: the latest processed frame (kept or dropped) and exactly what vision
+# returned for it. Boxes are full-frame pixels straight from YOLOE; the area is DINOv2's vote.
+latest: dict[str, Any] = {}
+_latest_lock = threading.Lock()
+
+
+def _publish_latest(frame_id: int, ts_ms: float, jpeg: bytes, result: Any, spacetime_ms: float) -> None:
+    sightings = [{k: v for k, v in s.items() if k != "thumb_b64"} for s in result.sightings]
+    frame = result.frame or {}
+    snapshot = {
+        "frame_id": frame_id,
+        "ts_ms": ts_ms,
+        "kept": result.kept,
+        "drop_reason": result.drop_reason,
+        "sharpness": round(result.sharpness, 1),
+        "sharpness_gate": _sharpness_gate(),
+        "area_id": frame.get("area_id", ""),
+        "area_conf": frame.get("area_conf", 0.0),
+        "items_seen": json.loads(frame["items_seen_json"]) if frame.get("items_seen_json") else [],
+        "sightings": sightings,
+        "furniture": [{"name": n, "bbox": b, "conf": c} for n, b, c in result.furniture_boxes],
+        "vision_ms": round(result.ms),
+        "spacetime_ms": round(spacetime_ms),
+    }
+    with _latest_lock:
+        latest.clear()
+        latest.update(snapshot)
+        latest["jpeg"] = jpeg
+
+
+def _sharpness_gate() -> float:
+    try:
+        from backend.vision import settings as vs
+        return float(vs.SHARPNESS_GATE)
+    except Exception:
+        return 0.0
+
+
+def latest_state() -> dict[str, Any]:
+    """The latest frame's facts without the JPEG bytes (for /live/state)."""
+    with _latest_lock:
+        return {k: v for k, v in latest.items() if k != "jpeg"}
+
+
+def latest_jpeg() -> tuple[int, bytes] | None:
+    with _latest_lock:
+        if not latest:
+            return None
+        return latest["frame_id"], latest["jpeg"]
 
 
 def _first_frame_id() -> int:
@@ -86,7 +137,10 @@ def handle(jpeg: bytes) -> dict[str, Any]:
         stats["processed"] += 1
         if not result.kept:
             stats["dropped"] += 1
-            history.append({"frame_id": frame_id, "kept": False, "vision_ms": vision_ms, "spacetime_ms": 0.0})
+            history.append({"frame_id": frame_id, "ts_ms": ts_ms, "kept": False, "reason": result.drop_reason,
+                            "sharpness": round(result.sharpness, 1), "vision_ms": vision_ms, "spacetime_ms": 0.0,
+                            "seen": []})
+            _publish_latest(frame_id, ts_ms, jpeg, result, 0.0)
             log.info("frame %d dropped (%s): vision %.0f ms", frame_id, result.drop_reason, vision_ms)
             return {"frame_id": frame_id, "kept": False, "reason": result.drop_reason}
 
@@ -103,7 +157,13 @@ def handle(jpeg: bytes) -> dict[str, Any]:
             stats["spacetime_errors"] += 1
             log.warning("frame %d: Spacetime call failed: %s", frame_id, exc)
         spacetime_ms = (time.perf_counter() - t0) * 1000
-        history.append({"frame_id": frame_id, "kept": True, "vision_ms": vision_ms, "spacetime_ms": spacetime_ms})
+        seen_list = [{"item_id": s["item_id"], "label": s["label"], "furniture": s["furniture"],
+                      "conf": s["det_conf"]} for s in result.sightings]
+        history.append({"frame_id": frame_id, "ts_ms": ts_ms, "kept": True, "reason": "",
+                        "sharpness": round(result.sharpness, 1), "vision_ms": vision_ms,
+                        "spacetime_ms": spacetime_ms, "seen": seen_list,
+                        "area_id": (result.frame or {}).get("area_id", "")})
+        _publish_latest(frame_id, ts_ms, jpeg, result, spacetime_ms)
 
         seen = ", ".join(f"{s['item_id'] or '?'}@{s['furniture'] or '-'}" for s in result.sightings) or "nothing"
         log.info("frame %d kept: %s | vision %.0f ms, spacetime %.0f ms, total %.0f ms",
@@ -131,7 +191,7 @@ async def _fetch(client: httpx.AsyncClient) -> bytes | None:
     try:
         r = await client.get(settings.NEMO_JPG_URL)
     except Exception as exc:  # Nemo off or out of range: the caller keeps trying
-        log.warning("could not fetch a frame: %s", exc)
+        log.warning("could not fetch a frame from %s: %s %s", settings.NEMO_JPG_URL, type(exc).__name__, exc)
         return None
     if r.status_code == 503:
         # Nemo answers 503 while it's recording (button held): skip quietly.

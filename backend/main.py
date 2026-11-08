@@ -11,12 +11,19 @@ from collections import deque
 from contextlib import asynccontextmanager
 from urllib.parse import quote
 
+from pathlib import Path
+
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from backend import agent, alerts, frames, settings, spacetime_client, speech
+from backend import spacetime_client as st
+
+LIVE_PAGE = Path(__file__).resolve().parent / "static" / "live.html"
+last_ask: dict = {}  # the most recent /ask, for the live page
 
 log = logging.getLogger("nemo.backend")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -184,6 +191,13 @@ async def ask(request: Request) -> Response:
         (t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000, voice, (t3 - t0) * 1000,
         question, answer,
     )
+    last_ask.clear()
+    last_ask.update({
+        "question": question, "answer": answer, "voice": voice, "at_ms": time.time() * 1000,
+        "stt_ms": round((t1 - t0) * 1000), "agent_ms": round((t2 - t1) * 1000),
+        "tts_ms": round((t3 - t2) * 1000), "total_ms": round((t3 - t0) * 1000),
+        "device": request.headers.get("X-Device-Id", "unknown"),
+    })
     return Response(
         content=wav,
         media_type="audio/wav",
@@ -193,6 +207,81 @@ async def ask(request: Request) -> Response:
             "X-Voice": voice,
         },
     )
+
+
+# ---- Live view: what Nemo sees, what it remembers ----
+
+_memory_cache: tuple[float, list] = (0.0, [])
+
+
+def _memory() -> list[dict]:
+    """item_state from Spacetime, with spoken-style spots and the thumbnail. Cached for 2 s."""
+    global _memory_cache
+    if time.time() - _memory_cache[0] < 2.0:
+        return _memory_cache[1]
+    names = {it["item_id"]: it["name"] for it in agent._items()}
+    rows = []
+    for s in st.sql("SELECT * FROM item_state"):
+        area = agent._area_name(s["area_id"]) if s["area_id"] else ""
+        rows.append({
+            "item_id": s["item_id"],
+            "name": names.get(s["item_id"], s["item_id"]),
+            "state": s["state"],
+            "area": area,
+            "furniture": s["furniture"],
+            "spot": agent._spot_phrase(s["furniture"], area) if (area or s["furniture"]) else "",
+            "minutes_ago": agent._minutes_ago(s["last_seen_ts_ms"]),
+            "last_seen_ts_ms": s["last_seen_ts_ms"],
+            "confidence": round(s["confidence"], 2),
+            "spot_description": s["spot_description"],
+            "thumb_b64": s["thumb_b64"],
+        })
+    rows.sort(key=lambda r: -r["last_seen_ts_ms"])
+    _memory_cache = (time.time(), rows)
+    return rows
+
+
+@app.get("/live")
+def live_page() -> FileResponse:
+    return FileResponse(LIVE_PAGE, media_type="text/html")
+
+
+@app.get("/live/frame.jpg")
+def live_frame() -> Response:
+    got = frames.latest_jpeg()
+    if not got:
+        return Response(status_code=204)
+    frame_id, jpeg = got
+    return Response(content=jpeg, media_type="image/jpeg",
+                    headers={"Cache-Control": "no-store", "X-Frame-Id": str(frame_id)})
+
+
+@app.get("/live/state")
+async def live_state() -> dict:
+    try:
+        memory = await run_in_threadpool(_memory)
+        memory_error = ""
+    except Exception as exc:
+        memory, memory_error = [], str(exc)
+    from backend.vision import settings as vs  # the thresholds the page shows
+    return {
+        "now_ms": time.time() * 1000,
+        "frame": frames.latest_state(),
+        "stats": {**frames.stats, "avg_vision_ms_last_20": frames.avg_vision_ms()},
+        "feed": list(frames.history)[-40:][::-1],
+        "memory": memory,
+        "memory_error": memory_error,
+        "last_ask": last_ask,
+        "config": {
+            "frame_source": settings.FRAME_SOURCE,
+            "sharpness_gate": vs.SHARPNESS_GATE,
+            "detect_imgsz": vs.DETECT_IMGSZ,
+            "detect_conf": vs.DETECT_CONF,
+            "burst_frames": settings.BURST_FRAMES,
+            "stt_model": settings.STT_MODEL,
+            "tts_provider": settings.TTS_PROVIDER,
+        },
+    }
 
 
 if __name__ == "__main__":
