@@ -48,10 +48,14 @@ def _providers() -> list[tuple[str, OpenAI, str, dict[str, Any]]]:
         return _provider_cache
     out = []
     if settings.NEMOTRON_API_KEY and settings.NEMOTRON_VL_MODEL:
-        out.append(("nvidia", OpenAI(base_url=settings.NEMOTRON_BASE_URL, api_key=settings.NEMOTRON_API_KEY),
+        # max_retries=0: the SDK's default of 2 retries turned one slow call into 40 s or more.
+        # OpenRouter below is the retry; a job that still fails is dropped, not queued.
+        out.append(("nvidia", OpenAI(base_url=settings.NEMOTRON_BASE_URL, api_key=settings.NEMOTRON_API_KEY,
+                                     max_retries=0),
                     settings.NEMOTRON_VL_MODEL, {"chat_template_kwargs": {"enable_thinking": False}}))
     if settings.OPENROUTER_API_KEY and settings.OPENROUTER_VL_MODEL:
-        out.append(("openrouter", OpenAI(base_url=settings.OPENROUTER_BASE_URL, api_key=settings.OPENROUTER_API_KEY),
+        out.append(("openrouter", OpenAI(base_url=settings.OPENROUTER_BASE_URL, api_key=settings.OPENROUTER_API_KEY,
+                                         max_retries=0),
                     settings.OPENROUTER_VL_MODEL, {"reasoning": {"enabled": False}}))
     _provider_cache = out
     return out
@@ -152,16 +156,22 @@ def _clean_sentence(text: str, max_chars: int = 140) -> str:
     return text.rstrip(". ")
 
 
-def describe_spot(jpeg: bytes, bbox_json: str, item_name: str, furniture: str = "") -> str:
+def describe_spot(jpeg: bytes, bbox_json: str, item_name: str, furniture: str = "", area: str = "") -> str:
     """Where exactly the highlighted item is, in one spoken sentence. "" if it can't be done.
 
     `furniture` is what Spacetime says it's on (from YOLOE), so the description uses the same word
-    the rest of the answer does ("on the desk ...", not "on the counter ...").
+    the rest of the answer does ("on the desk ...", not "on the counter ..."). `area` is the
+    fallback hint when no furniture was in view.
     """
     crop = crop_around(jpeg, bbox_json, pad=2.5, max_side=640, highlight=True)
     if not crop:
         return ""
-    on = f" It is on the {furniture.replace('_', ' ')}." if furniture else ""
+    if furniture:
+        on = f" It is on the {furniture.replace('_', ' ')}."
+    elif area:
+        on = f" It is in the {area.replace('_', ' ')} area."
+    else:
+        on = ""
     prompt = (f"The object inside the green box is the person's {item_name}.{on} In one short spoken "
               f"sentence of at most 14 words, say exactly where it is using the things around it, for "
               f"example 'on the desk between the lamp and the water bottles'. Start with 'on', 'by', 'in' "
@@ -260,8 +270,9 @@ def _item_names() -> dict[str, str]:
     return {it["item_id"]: it["name"] for it in agent._items()}
 
 
-def _describe_job(item_id: str, placed_ts_ms: float, jpeg: bytes, bbox_json: str, furniture: str = "") -> None:
-    text = describe_spot(jpeg, bbox_json, _item_names().get(item_id, item_id.replace("_", " ")), furniture)
+def _describe_job(item_id: str, placed_ts_ms: float, jpeg: bytes, bbox_json: str, furniture: str = "",
+                  area: str = "") -> None:
+    text = describe_spot(jpeg, bbox_json, _item_names().get(item_id, item_id.replace("_", " ")), furniture, area)
     if text:
         st.call("set_spot_description", item_id, placed_ts_ms, text)
         log.info("spot described: %s -> %r", item_id, text)
@@ -269,7 +280,14 @@ def _describe_job(item_id: str, placed_ts_ms: float, jpeg: bytes, bbox_json: str
 
 MIN_BOX_PX = 80  # a box smaller than this (longest side) is too little to identify from; don't ask
 PICK_REPEAT_MS = 20_000  # a Super VL pick nobody else supports counts once it repeats within this long
-_last_pick: dict[str, tuple[Any, float]] = {}  # item_id -> (frame_id, ts_ms) of Super VL's last pick
+_last_pick: dict[str, tuple[Any, float, str]] = {}  # item_id -> (frame_id, ts_ms, YOLOE label) of the last pick
+
+# When DINOv2 is unsure and Super VL can't tell either, YOLOE's own wording may still place these
+# items, if YOLOE was reasonably confident. Only the pill box: it's the item the reminders and the
+# carer alerts depend on, and YOLOE's pill-box wordings don't look like anything else we track.
+# The sighting still goes through add_sighting, so CONFIRM_FRAMES (2 in a row) still applies.
+YOLOE_FALLBACK_ITEMS = {"pill_box"}
+YOLOE_FALLBACK_MIN_CONF = 0.30  # YOLOE confidence needed (DETECT_CONF, the floor, is 0.20)
 
 
 def _label_item(label: str, names: dict[str, str]) -> str:
@@ -284,18 +302,39 @@ def _label_item(label: str, names: dict[str, str]) -> str:
     return ""
 
 
+def _report_identified(sighting: dict[str, Any], item_id: str, jpeg: bytes) -> None:
+    """Re-report an unsure sighting as this item. Spacetime keeps the unsure one too (append-only)
+    and its placement rules (CONFIRM_FRAMES and all) still decide what goes into item_state."""
+    resolved = {**sighting, "item_id": item_id, "match_margin": 1.0,
+                "candidates_json": json.dumps([[item_id, 1.0]])}
+    st.call("add_sighting", *resolved.values())
+    # If that sighting made Spacetime place the item, describe the spot (same check as after_frame).
+    _describe_if_just_placed({item_id: resolved}, sighting["ts_ms"], jpeg)
+
+
+def _yoloe_fallback(sighting: dict[str, Any], label_item: str, jpeg: bytes, why: str) -> bool:
+    """Super VL couldn't tell: trust YOLOE's wording for the pill box if YOLOE was confident enough."""
+    if label_item not in YOLOE_FALLBACK_ITEMS or sighting["det_conf"] < YOLOE_FALLBACK_MIN_CONF:
+        return False
+    _report_identified(sighting, label_item, jpeg)
+    log.info("yoloe fallback: %r is the %s (det %.2f, super vl %s, frame %s)",
+             sighting["label"], label_item, sighting["det_conf"], why, sighting["frame_id"])
+    return True
+
+
 def _second_opinion_job(sighting: dict[str, Any], jpeg: bytes) -> None:
+    names = _item_names()
+    label_item = _label_item(sighting["label"], names)
     box = _bbox(sighting["bbox_json"])
     if not box or max(box[2], box[3]) < MIN_BOX_PX:
-        log.info("super vl second opinion skipped: box too small (%s)", sighting["bbox_json"])
+        if not _yoloe_fallback(sighting, label_item, jpeg, "not asked, box too small"):
+            log.info("super vl second opinion skipped: box too small (%s)", sighting["bbox_json"])
         return
     try:
         cands = json.loads(sighting["candidates_json"])
     except Exception:
         return
-    names = _item_names()
     dino = [c[0] for c in cands if isinstance(c, list) and c and c[0] in names]
-    label_item = _label_item(sighting["label"], names)
     # Offer every tracked item, most likely first: YOLOE's wording, DINOv2's guesses, then the rest.
     # (Only offering DINOv2's guesses meant Super VL could never name the wallet when both missed it.)
     ordered: list[str] = []
@@ -305,28 +344,32 @@ def _second_opinion_job(sighting: dict[str, Any], jpeg: bytes) -> None:
     options = [(i, names[i]) for i in ordered]
     if not options:
         return
-    chosen = second_opinion(jpeg, sighting["bbox_json"], options)
+    try:
+        chosen = second_opinion(jpeg, sighting["bbox_json"], options)
+    except Exception as exc:
+        if not _yoloe_fallback(sighting, label_item, jpeg, "failed"):
+            raise
+        log.warning("super vl second opinion failed (%s); used YOLOE's wording", exc)
+        return
     if not chosen:
-        log.info("super vl second opinion: unsure (frame %s, %s)", sighting["frame_id"], sighting["label"])
+        if not _yoloe_fallback(sighting, label_item, jpeg, "unsure"):
+            log.info("super vl second opinion: unsure (frame %s, %s)", sighting["frame_id"], sighting["label"])
         return
     # A lone Super VL guess on a blurry crop is not enough to go into memory. Accept it if it agrees
-    # with YOLOE's wording or DINOv2's best guess, OR if Super VL gave the same answer on the previous
-    # frame too (two frames agreeing is independent evidence).
+    # with YOLOE's wording or DINOv2's best guess, OR if Super VL gave the same answer for the same
+    # kind of box (same YOLOE wording) on a previous frame (two frames agreeing is independent
+    # evidence). The wording check stops a wallet picked on one box carrying over to a different box.
     supported = {label_item, dino[0] if dino else ""} - {""}
     prev = _last_pick.get(chosen)
-    repeated = prev is not None and prev[0] != sighting["frame_id"] and sighting["ts_ms"] - prev[1] <= PICK_REPEAT_MS
-    _last_pick[chosen] = (sighting["frame_id"], sighting["ts_ms"])
+    repeated = (prev is not None and prev[0] != sighting["frame_id"] and prev[2] == sighting["label"]
+                and sighting["ts_ms"] - prev[1] <= PICK_REPEAT_MS)
+    _last_pick[chosen] = (sighting["frame_id"], sighting["ts_ms"], sighting["label"])
     if chosen not in supported and not repeated:
         log.info("super vl second opinion: said %s (YOLOE %s, DINOv2 %s); waiting for a second frame to agree",
                  chosen, label_item or "-", dino[0] if dino else "-")
         return
-    # Re-report the sighting as identified. Spacetime keeps the unsure one too (append-only).
-    resolved = {**sighting, "item_id": chosen, "match_margin": 1.0,
-                "candidates_json": json.dumps([[chosen, 1.0]])}
-    st.call("add_sighting", *resolved.values())
+    _report_identified(sighting, chosen, jpeg)
     log.info("super vl second opinion: %r is the %s (frame %s)", sighting["label"], chosen, sighting["frame_id"])
-    # If that sighting made Spacetime place the item, describe the spot (same check as after_frame).
-    _describe_if_just_placed({chosen: resolved}, sighting["ts_ms"], jpeg)
 
 
 def _describe_if_just_placed(seen: dict[str, dict[str, Any]], ts_ms: float, jpeg: bytes) -> None:
@@ -342,7 +385,7 @@ def _describe_if_just_placed(seen: dict[str, dict[str, Any]], ts_ms: float, jpeg
     for r in rows:
         if abs(r["last_placed_ts_ms"] - ts_ms) < 1.0 and not r["spot_description"]:
             submit(f"describe:{r['item_id']}", _describe_job, r["item_id"], r["last_placed_ts_ms"], jpeg,
-                   seen[r["item_id"]]["bbox_json"], r.get("furniture", ""))
+                   seen[r["item_id"]]["bbox_json"], r.get("furniture", ""), r.get("area_id", ""))
 
 
 def after_frame(frame_id: int, ts_ms: float, jpeg: bytes, sightings: list[dict[str, Any]]) -> None:

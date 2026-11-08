@@ -251,9 +251,15 @@ After each kept frame (`vl.after_frame`), in the background:
   candidates), biggest box first, at most 2 per frame, boxes under 80 px skipped. Super VL is shown
   the crop and every tracked item's name (most likely first: YOLOE's wording, DINOv2's guesses,
   then the rest) plus "none of them" and "unsure". A pick only counts if it agrees with YOLOE's
-  wording or DINOv2's top guess, OR Super VL gave the same pick on a different frame within 20 s.
-  It is then reported again as a normal `add_sighting` with that item_id and margin 1.0, so the
-  placement rules (CONFIRM_FRAMES and all) still decide. Nothing is written directly.
+  wording or DINOv2's top guess, OR Super VL gave the same pick for a box with the same YOLOE
+  wording on a different frame within 20 s. It is then reported again as a normal `add_sighting`
+  with that item_id and margin 1.0, so the placement rules (CONFIRM_FRAMES and all) still decide.
+  Nothing is written directly.
+- **Pill box fallback**: if Super VL says unsure (or can't be asked: box under 80 px, or the call
+  failed) and YOLOE's wording was a pill-box wording with confidence at least 0.30 (the detection
+  floor is 0.20), the sighting is reported as `pill_box` the same way. Only the pill box: it's the
+  item the reminders and carer alerts depend on, and nothing else we track looks like one. The
+  2-in-a-row rule still applies, so one such frame changes nothing.
 - **Spot description**: when a sighting from this frame made Spacetime place an item
   (`item_state.last_placed_ts_ms` equals the frame's `ts_ms`) and the description is empty, Super
   VL describes the spot in one sentence, told which furniture Spacetime says it's on, and
