@@ -6,6 +6,7 @@ Call load() once at startup; it loads the whisper model and, for TTS_PROVIDER=lo
 
 import io
 import logging
+import time
 import wave
 from math import gcd
 
@@ -68,7 +69,13 @@ def load_whisper():
     if _whisper is None:
         from faster_whisper import WhisperModel
         _whisper = WhisperModel(settings.STT_MODEL, device="cpu", compute_type="int8")
-        log.info("loaded faster-whisper %s on CPU", settings.STT_MODEL)
+        # Warm it up: the first transcription pays a one-off setup cost (about 7 s on this laptop),
+        # so spend it now rather than on the wearer's first question. Quiet noise, VAD off, so it runs.
+        started = time.perf_counter()
+        noise = (np.random.default_rng(0).standard_normal(SAMPLE_RATE) * 0.01).astype(np.float32)
+        list(_whisper.transcribe(noise, language="en", beam_size=1, vad_filter=False)[0])
+        log.info("loaded faster-whisper %s on CPU (warmed up in %.1f s)", settings.STT_MODEL,
+                 time.perf_counter() - started)
     return _whisper
 
 

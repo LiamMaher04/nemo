@@ -230,6 +230,17 @@ things, like your keys or glasses."
 
 `/ask` pauses vision (new frames are skipped) while it's answering, so speech to text and the agent
 get the CPU.
+
+Speed-ups in the agent (`backend/agent.py`):
+- **Prefetch:** if the question names exactly one tracked item (its name, id or an alias, as whole
+  words), the backend runs `find_item` for it before the first model call (plus `item_history` for
+  importance-3 items, the pill box) and puts the results in the conversation as tool calls. A plain
+  "where's my X?" then needs one Nemotron call instead of two. Other questions use the normal loop.
+- `items` and `areas` are cached in memory for 60 s; `item_state` is always read fresh.
+- `where_is` for an item seen with no area and no furniture returns
+  `{"seen": true, "place_known": false, "minutes_ago", "note"}`: "I saw it about N minutes ago, but
+  I couldn't tell where".
+- Whisper is warmed up at startup, so the first question isn't slower than the rest.
 - `where_is(item_id)` -> `{"tracked": true, "seen": false, "note"}` for a tracked item Nemo hasn't
   spotted yet (answer "I haven't seen your keys yet", not "I don't keep track of that"), or spot (a
   ready-to-say phrase such as "on the sofa by the couch"), area name, furniture, spot_description,

@@ -50,6 +50,8 @@ Never make up a place, a time or an item. Two different cases, don't mix them up
 keep track of that (e.g. "I don't keep track of umbrellas").
 - "where" (or where_is) says seen: false: it IS one of your items, you just haven't spotted it \
 yet, so say that (e.g. "I haven't seen your keys yet"). Never say you don't keep track of it.
+- "where" says seen: true but place_known: false: you did see it, you just couldn't tell where, so \
+say that (e.g. "I saw your remote about 20 minutes ago, but I couldn't tell where it was").
 If the confidence is low or there are look-alike candidates, say you're not sure.
 
 A "used" event is only a sign, not proof: it means the item went missing from its spot and came \
@@ -114,9 +116,35 @@ def _norm(text: str) -> str:
     return " ".join(text.lower().replace("'s", "").replace("my ", " ").split())
 
 
+# items and areas hardly ever change (only when the seed is re-run), so keep them in memory for a
+# minute instead of asking Spacetime every question. item_state is always read fresh.
+_CACHE_S = 60.0
+_cache: dict[str, tuple[float, Any]] = {}
+
+
+def _cached(key: str, query: str) -> list[dict[str, Any]]:
+    hit = _cache.get(key)
+    if hit and time.monotonic() - hit[0] < _CACHE_S:
+        return hit[1]
+    rows = st.sql(query)
+    _cache[key] = (time.monotonic(), rows)
+    return rows
+
+
+def _items() -> list[dict[str, Any]]:
+    return _cached("items", "SELECT * FROM items")
+
+
+def _area_name(area_id: str) -> str:
+    for a in _cached("areas", "SELECT * FROM areas"):
+        if a["area_id"] == area_id:
+            return a["name"]
+    return area_id.replace("_", " ")
+
+
 def find_item(name: str) -> dict[str, Any]:
     wanted = _norm(name)
-    items = st.sql("SELECT * FROM items")
+    items = _items()
     exact, partial = [], []
     for it in items:
         names = [it["item_id"].replace("_", " "), it["name"], *it["aliases"]]
@@ -159,10 +187,18 @@ def where_is(item_id: str) -> dict[str, Any]:
         return {"item_id": item_id, "tracked": True, "seen": False,
                 "note": "This is one of the tracked items; Nemo just hasn't seen it yet."}
     s = rows[0]
-    area_rows = st.sql(f"SELECT * FROM areas WHERE area_id = {_quote(s['area_id'])}")
-    area = area_rows[0]["name"] if area_rows else s["area_id"].replace("_", " ")
+    area = _area_name(s["area_id"]) if s["area_id"] else ""
     furniture = s["furniture"]
     candidates = json.loads(s["candidates_json"]) if s["candidates_json"] else []
+    if not area and not furniture:
+        # Seen, but with no furniture or area recognised: say when, not where.
+        return {
+            "item_id": item_id,
+            "seen": True,
+            "place_known": False,
+            "minutes_ago": _minutes_ago(s["last_seen_ts_ms"]),
+            "note": "Nemo saw it but couldn't tell where it was.",
+        }
     return {
         "item_id": item_id,
         "seen": True,
@@ -247,7 +283,7 @@ def _chat(messages: list[dict[str, Any]], final: bool) -> tuple[Any, str]:
                 tools=TOOLS,
                 tool_choice="none" if final else "auto",
                 temperature=0.2,
-                max_tokens=400,
+                max_tokens=200,  # spoken answers are one or two sentences
                 extra_body=extra,
                 timeout=30,
             )
@@ -256,6 +292,35 @@ def _chat(messages: list[dict[str, Any]], final: bool) -> tuple[Any, str]:
             log.warning("%s call failed: %s", name, exc)
             last_error = exc
     raise RuntimeError(f"All model providers failed: {last_error}")
+
+
+def _items_named_in(question: str) -> list[dict[str, Any]]:
+    """Tracked items whose name, id or an alias appears as whole words in the question."""
+    q = " " + " ".join("".join(c if c.isalnum() else " " for c in question.lower()).split()) + " "
+    found = []
+    for it in _items():
+        names = {it["item_id"].replace("_", " "), it["name"].lower(), *(a.lower() for a in it["aliases"])}
+        if any(f" {n} " in q for n in names if n):
+            found.append(it)
+    return found
+
+
+def _prefetch(question: str) -> list[tuple[str, dict[str, Any], Any]]:
+    """If the question names exactly one tracked item, look it up before the first model call.
+
+    Returns (tool name, args, result) tuples to put in the conversation as if the agent had called
+    them, so a plain "where's my X?" is answered in ONE Nemotron call instead of two (~1.5 s
+    quicker). The agent keeps all its tools for anything else. For important items (the pill box)
+    item_history is fetched too, for "have I taken my pills?".
+    """
+    named = _items_named_in(question)
+    if len(named) != 1:
+        return []
+    item = named[0]
+    calls = [("find_item", {"name": item["name"]}, find_item(item["name"]))]
+    if item["importance"] >= 3:
+        calls.append(("item_history", {"item_id": item["item_id"]}, item_history(item["item_id"])))
+    return calls
 
 
 def ask(question: str) -> dict[str, Any]:
@@ -268,6 +333,27 @@ def ask(question: str) -> dict[str, Any]:
     tool_calls: list[dict[str, Any]] = []
     answer = ""
     provider = ""
+
+    # Look the item up before asking the model, when the question clearly names one.
+    try:
+        prefetched = _prefetch(question)
+    except Exception as exc:  # never let the shortcut break an answer: fall back to the normal loop
+        log.warning("prefetch failed, the agent will look it up itself: %s", exc)
+        prefetched = []
+    if prefetched:
+        ids = [f"prefetch_{i}" for i in range(len(prefetched))]
+        messages.append({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"id": cid, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
+                for cid, (name, args, _) in zip(ids, prefetched)
+            ],
+        })
+        for cid, (name, args, result) in zip(ids, prefetched):
+            messages.append({"role": "tool", "tool_call_id": cid, "content": json.dumps(result)})
+            tool_calls.append({"name": name, "args": args, "result": result, "ms": 0, "prefetched": True})
+            log.info("prefetched %s(%s) -> %s", name, json.dumps(args), json.dumps(result))
 
     for step in range(MAX_STEPS):
         msg, provider = _chat(messages, final=step == MAX_STEPS - 1)
