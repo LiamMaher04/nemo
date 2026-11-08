@@ -1,17 +1,19 @@
-// camera_wifi - Nemo device live camera over Wi-Fi (test / preview sketch)
+// camera_blink - Nemo live camera over Wi-Fi, with a blinking-eyes face on the OLED
 //
-// The board joins a phone hotspot, serves the current camera frame as a JPEG
-// at http://<device-ip>/jpg, and shows its own web address on the OLED screen.
-// A laptop on the same hotspot views it by polling that address (see the
-// viewer.py in the team notes), or opens it in a browser for a single still.
+// Same as the plain camera preview, plus a face on the OLED:
+//   - eyes CLOSED when idle (no laptop pulling frames),
+//   - eyes OPEN and blinking every few seconds while a laptop is viewing (recording).
+// The camera, Wi-Fi and /jpg serving are unchanged; the face is display only, driven
+// off a timestamp set each time a frame is served.
 //
-// This is a PREVIEW sketch for eyeballing the camera. The real firmware pushes
-// frames to the backend (POST /frame); that lives elsewhere.
+// The board joins a phone hotspot and serves the current camera frame as a JPEG at
+// http://<device-ip>/jpg. It shows that address on the OLED at boot (so you can read
+// it), then switches to the face once a laptop connects (or after 30 s).
 //
 // Hardware: DFRobot DFR1154 ESP32-S3 AI Camera + DFR0486 OLED (I2C on 43/44).
 // Board "ESP32S3 Dev Module", PSRAM "OPI PSRAM" (camera will not start otherwise).
-// Resolution is 1280x720 (HD): sharp enough that small objects like keys survive.
-// HD frames are bigger, so the stream runs at a few fps over 2.4 GHz, which is fine.
+// Resolution 1280x720 (HD), which is above the 1024 px floor so small items like keys
+// survive. HD frames are bigger, so the stream runs at a few fps over 2.4 GHz.
 //
 // IMPORTANT: this repo is public. Do NOT commit real hotspot credentials.
 // Put your own hotspot name and password in the two lines below, locally only.
@@ -48,13 +50,51 @@ const char* PASS = "YOUR_PASSWORD";       // hotspot password
 Adafruit_SSD1306 oled(128, 64, &Wire, -1);
 WebServer server(80);
 
+unsigned long lastFrameMs = 0;   // set whenever a frame is served = "recording"
+unsigned long bootMs = 0;
+int shownEye = -1;               // what is drawn now: -1 none, 0 closed, 1 open
+unsigned long nextBlinkMs = 0, blinkUntilMs = 0;
+
 void handleJpg() {
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) { server.send(503, "text/plain", "no frame"); return; }
+  lastFrameMs = millis();                 // the only addition to serving: a timestamp
   server.setContentLength(fb->len);
   server.send(200, "image/jpeg", "");
   server.client().write(fb->buf, fb->len);
   esp_camera_fb_return(fb);
+}
+
+void drawFace(bool open) {
+  oled.clearDisplay();
+  int cy = 32; int xs[2] = {42, 86};
+  for (int i = 0; i < 2; i++) {
+    int cx = xs[i];
+    if (open) oled.fillRoundRect(cx - 14, cy - 18, 28, 36, 11, SSD1306_WHITE); // open eye
+    else      oled.fillRoundRect(cx - 14, cy - 3, 28, 6, 3, SSD1306_WHITE);    // closed eye (a line)
+  }
+  oled.display();
+}
+
+void updateFace() {
+  unsigned long now = millis();
+  // keep the IP on screen until a laptop first connects (max 30 s), so it can be read
+  if (lastFrameMs == 0 && (now - bootMs) < 30000UL) return;
+
+  bool recording = (lastFrameMs != 0) && (now - lastFrameMs < 1500UL);
+  int want;
+  if (recording) {
+    if (nextBlinkMs == 0) nextBlinkMs = now + 2500;
+    if (blinkUntilMs > now) want = 0;                 // mid-blink: shut
+    else if (now >= nextBlinkMs) {                    // start a blink
+      blinkUntilMs = now + 130;
+      nextBlinkMs = now + random(2200, 3800);
+      want = 0;
+    } else want = 1;                                  // open
+  } else {
+    want = 0; nextBlinkMs = 0;                        // idle: eyes closed
+  }
+  if (want != shownEye) { drawFace(want == 1); shownEye = want; }
 }
 
 void setup() {
@@ -94,7 +134,7 @@ void setup() {
   config.pin_sccb_sda = SIOD_GPIO_NUM; config.pin_sccb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM; config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.frame_size = FRAMESIZE_HD;        // 1280x720
+  config.frame_size = FRAMESIZE_HD;        // 1280x720 (above the 1024 px floor)
   config.pixel_format = PIXFORMAT_JPEG;
   config.grab_mode = CAMERA_GRAB_LATEST;
   config.fb_location = CAMERA_FB_IN_PSRAM;
@@ -111,6 +151,10 @@ void setup() {
   oled.setCursor(0, 40); oled.print("http://"); oled.print(WiFi.localIP());
   oled.setCursor(0, 52); oled.print("/jpg");
   oled.display();
+  bootMs = millis();
 }
 
-void loop() { server.handleClient(); }
+void loop() {
+  server.handleClient();
+  updateFace();
+}
