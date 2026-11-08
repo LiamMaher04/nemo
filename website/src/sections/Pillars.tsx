@@ -23,7 +23,7 @@ export function Pillars() {
   return (
     <section aria-labelledby="why-title" className="section pt-0 sm:pt-0" id="why-nemo">
       <div className="container-page">
-        <SectionLabel index="03">Why Nemo</SectionLabel>
+        <SectionLabel index="04">Why Nemo</SectionLabel>
         <Reveal>
           <h2 id="why-title" className="display mt-14 max-w-3xl">
             Less searching. More living.

@@ -20,7 +20,7 @@ export function WhoFor() {
   return (
     <section aria-labelledby="who-title" className="section bg-navy/[0.05]" id="who-its-for">
       <div className="container-page">
-        <SectionLabel index="04">Who it&rsquo;s for</SectionLabel>
+        <SectionLabel index="05">Who it&rsquo;s for</SectionLabel>
         <Reveal>
           <h2 id="who-title" className="display mt-14 max-w-4xl">
             Made for the person wearing it. Loved by the people who care.
