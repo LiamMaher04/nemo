@@ -25,7 +25,7 @@ If something else seems needed, suggest it and wait.
 - **NVIDIA, "Use Nemotron beyond a chatbot":** Nemotron is an *agent* with tools, working in several
   steps, not a chatbot. It's also proactive (reminders, carer alerts).
 - **Spacetime (Clockwork Labs):** Spacetime powers the primary functionality, the memory. The memory
-  LOGIC (placed, carried, used, moved) lives in Spacetime reducers, not in Python. If Python decides
+  LOGIC (last seen, used) lives in Spacetime reducers, not in Python. If Python decides
   everything and Spacetime only stores rows, we fail their rule. Public GitHub repo required to win.
 - **Photon:** carer alerts go out by iMessage/SMS through Photon's Spectrum TypeScript SDK. One way
   only: Nemo texts the carer, the carer doesn't text back.
@@ -53,11 +53,10 @@ Nemo device (ESP32-S3 camera, Arduino)
   v
 backend/ (Python, FastAPI, on the laptop)
   drop blurry and near-duplicate frames -> YOLOE (items + furniture) -> DINOv2 (area, look-alikes)
-  -> movement check (does the item move with the background?)
-  | HTTP: POST /v1/database/<db>/call/add_sighting
+  | HTTP: add_sighting per item seen, then add_frame once per kept frame
   v
 spacetime/ (SpacetimeDB module in TypeScript)
-  tables + reducers: placed / carried / used / moved, item_state, routines, alerts
+  tables + reducers: last seen, used, item_state, routines, alerts
   |
   v
 agent (Nemotron Lightning + tools) -> spoken answers and reminders on Nemo
@@ -71,14 +70,19 @@ agent (Nemotron Lightning + tools) -> spoken answers and reminders on Nemo
 
 ## How the memory decides (reducer rules)
 
-- **No hand detection.** Movement decides:
-  - item moves with the background = resting somewhere;
-  - item stays fixed to the camera while the background moves = carried by the wearer.
-- **Placed:** still with the room for several frames, committed only after the wearer has moved away.
-- **Carried:** fixed to the camera for about 2 s.
-- **Used:** an important item is carried, then put down again.
-- **Moved:** the item turns up somewhere new without having been carried by the wearer.
-- **Not seen is not moved,** unless its spot was clearly in view.
+Spacetime keeps the last place each item was seen. Seeing an item in someone's hand now and then
+is fine: the last place Nemo saw it is still a useful answer.
+
+- **Last seen:** once an item has been seen `CONFIRM_FRAMES` (2) times in a row in the same area and
+  furniture, `item_state` is updated to that spot. It's a noise filter: one stray sighting changes
+  nothing. A `placed` event is written only when the area or furniture actually changes.
+- **add_frame:** vision reports each kept frame (area, furniture in view, items seen, sharpness).
+  If an important item's furniture is clearly in view (sharp frame) and the item isn't there, it's
+  marked missing. `item_state` doesn't change: looking the other way, or a blurry frame, changes
+  nothing.
+- **Used:** an important item (the pill box) that was missing from its furniture in a sharp frame
+  is seen back on the same furniture in the same area. That writes a `used` event and adds to
+  `routines` for that hour. A sign the pills were taken, not proof.
 - **Small DINOv2 margin** (two look-alikes are close): store both candidates, change neither item.
 
 ## Alerts
@@ -105,7 +109,7 @@ agent (Nemotron Lightning + tools) -> spoken answers and reminders on Nemo
 ## Build order (do not skip ahead)
 
 1. Frames to `/frame` (firmware + endpoint).
-2. Spacetime tables and the placed/carried reducer, plus seed data for the demo items and areas.
+2. Spacetime tables and the last-seen reducer, plus seed data for the demo items and areas.
 3. Vision v1 (Josie).
 4. Teach YOLOE on footage from the hotel and the demo room.
 5. `/ask` voice + agent.

@@ -13,10 +13,10 @@ Named after Mnemosyne, the Greek goddess of memory.
   over Wi-Fi. Press the button to ask a question.
 - **Backend** (Python, FastAPI) detects objects (YOLOE), works out which exact object it is (DINOv2)
   and which room you're in, and reports sightings.
-- **Memory** (SpacetimeDB) decides when something has been put down vs carried, and keeps where every
-  item was last placed. The carer app updates live.
+- **Memory** (SpacetimeDB) keeps the last place each item was seen (after 2 sightings in a row in the
+  same spot), and notices when the pill box goes missing from its furniture and comes back: "used".
 - **Agent** (NVIDIA Nemotron) answers questions in several steps using the memory as a tool, and
-  raises proactive alerts (e.g. the pill box hasn't moved by 11am).
+  raises proactive alerts (e.g. the pill box hasn't been used by the usual time).
 
 ## Layout
 
