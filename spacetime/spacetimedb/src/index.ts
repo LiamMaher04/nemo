@@ -10,12 +10,22 @@ import {
   type InferSchema,
   type ReducerCtx,
 } from 'spacetimedb/server';
+import { ScheduleAt } from 'spacetimedb';
 
 // ---- Memory rule constants ----
 const CONFIRM_FRAMES = 2; // same area + furniture this many sightings in a row before item_state changes
 const FRAME_SHARP_MIN = 100; // add_frame sharpness must be above this to count a spot as clearly in view
 const IMPORTANT = 3; // importance at which "used" is tracked (the pill box)
-const LOCAL_UTC_OFFSET_HOURS = -6; // Dallas (CST) for the routines hour
+const LOCAL_UTC_OFFSET_HOURS = -6; // Dallas (CST) for the routines hour and the local day
+
+// ---- Carer alert constants (check_alerts) ----
+const ALERT_CHECK_EVERY_MS = 60_000; // how often check_alerts runs
+const PILL_ITEM_ID = 'pill_box';
+const PILL_DUE_HOUR = 9; // local hour pills are due if routines has nothing yet
+const PILL_GRACE_MIN = 60; // minutes after the usual hour before "pills not taken" is raised
+const DAY_START_HOUR = 8; // local daytime window for no_activity
+const DAY_END_HOUR = 21;
+const NO_ACTIVITY_MIN = 180; // no placed/used event and no add_frame for this long = no_activity
 
 // What can be tracked. Seeded for the demo.
 const items = table(
@@ -132,9 +142,27 @@ const tracking = table(
   }
 );
 
+// Private key/value timestamps, e.g. "last_frame" (when add_frame was last called). Not public.
+const status = table(
+  { name: 'status' },
+  {
+    key: t.string().primaryKey(),
+    ts_ms: t.f64(),
+  }
+);
+
+// One repeating row that makes check_alerts run every ALERT_CHECK_EVERY_MS. Not public.
+const alert_schedule = table(
+  { name: 'alert_schedule' },
+  {
+    scheduled_id: t.u64().primaryKey().autoInc(),
+    scheduled_at: t.scheduleAt(),
+  }
+);
+
 // Names are already snake_case, so keep them exactly (the default would turn thumb_b64 into thumb_b_64).
 const spacetimedb = schema(
-  { items, areas, sightings, item_state, events, routines, alerts, tracking },
+  { items, areas, sightings, item_state, events, routines, alerts, tracking, status, alert_schedule },
   { CASE_CONVERSION_POLICY: CaseConversionPolicy.None }
 );
 export default spacetimedb;
@@ -173,6 +201,14 @@ function addRoutineUse(ctx: Ctx, item_id: string, hour: number) {
     ctx.db.routines.id.update({ ...existing, use_count: existing.use_count + 1 });
   } else {
     ctx.db.routines.insert({ id: 0n, item_id, hour, use_count: 1 });
+  }
+}
+
+function setStatus(ctx: Ctx, key: string, ts_ms: number) {
+  if (ctx.db.status.key.find(key)) {
+    ctx.db.status.key.update({ key, ts_ms });
+  } else {
+    ctx.db.status.insert({ key, ts_ms });
   }
 }
 
@@ -322,6 +358,7 @@ export const add_frame = spacetimedb.reducer(
     sharpness: t.f32(),
   },
   (ctx, args) => {
+    setStatus(ctx, 'last_frame', args.ts_ms); // any kept frame counts as activity, sharp or not
     if (!(args.sharpness > FRAME_SHARP_MIN)) return;
     const furnitureInView = stringList(args.furniture_in_view_json);
     const itemsSeen = stringList(args.items_seen_json);
@@ -357,6 +394,127 @@ export const record_alert = spacetimedb.reducer(
   }
 );
 
+// The backend calls this after it has texted (or failed to text) an alert raised below.
+export const mark_alert_sent = spacetimedb.reducer(
+  { id: t.u64(), sent: t.bool() },
+  (ctx, { id, sent }) => {
+    const row = ctx.db.alerts.id.find(id);
+    if (row) ctx.db.alerts.id.update({ ...row, sent });
+  }
+);
+
+// ---- Carer alert checks ----
+
+function localDay(ts_ms: number): number {
+  return Math.floor((ts_ms / 3_600_000 + LOCAL_UTC_OFFSET_HOURS) / 24);
+}
+
+function localMinuteOfDay(ts_ms: number): number {
+  const m = Math.floor(ts_ms / 60_000 + LOCAL_UTC_OFFSET_HOURS * 60);
+  return ((m % 1440) + 1440) % 1440;
+}
+
+// Raise a carer alert unless one of this type was already raised today, or one is still unsent.
+function raiseCarerAlert(ctx: Ctx, now_ms: number, type: string, item_id: string, message: string) {
+  for (const a of ctx.db.alerts.iter()) {
+    if (a.channel !== 'carer' || a.type !== type) continue;
+    if (!a.sent || localDay(a.ts_ms) === localDay(now_ms)) return;
+  }
+  ctx.db.alerts.insert({ id: 0n, type, item_id, message, channel: 'carer', ts_ms: now_ms, sent: false });
+}
+
+function pillUsualHour(ctx: Ctx): number {
+  let best: { hour: number; use_count: number } | undefined;
+  for (const r of ctx.db.routines.iter()) {
+    if (r.item_id !== PILL_ITEM_ID) continue;
+    if (!best || r.use_count > best.use_count) best = r;
+  }
+  return best ? best.hour : PILL_DUE_HOUR;
+}
+
+function lastSeenText(ctx: Ctx, item_id: string): string {
+  const s = ctx.db.item_state.item_id.find(item_id);
+  if (!s || s.state !== 'placed') return 'not seen yet';
+  const area = ctx.db.areas.area_id.find(s.area_id)?.name ?? s.area_id;
+  if (!s.furniture || s.furniture.toLowerCase() === area.toLowerCase()) return area;
+  return `${area}, ${s.furniture}`;
+}
+
+function checkPills(ctx: Ctx, now_ms: number) {
+  const dueMinute = pillUsualHour(ctx) * 60 + PILL_GRACE_MIN;
+  if (localMinuteOfDay(now_ms) < dueMinute) return;
+  const today = localDay(now_ms);
+  for (const e of ctx.db.events.iter()) {
+    if (e.item_id === PILL_ITEM_ID && e.type === 'used' && localDay(e.ts_ms) === today) return;
+  }
+  raiseCarerAlert(
+    ctx,
+    now_ms,
+    'pills_not_taken',
+    PILL_ITEM_ID,
+    `It looks like the pills haven't been taken yet today. Last seen: ${lastSeenText(ctx, PILL_ITEM_ID)}.`
+  );
+}
+
+function checkNoActivity(ctx: Ctx, now_ms: number) {
+  const minute = localMinuteOfDay(now_ms);
+  if (minute < DAY_START_HOUR * 60 || minute >= DAY_END_HOUR * 60) return;
+  let last = ctx.db.status.key.find('last_frame')?.ts_ms ?? 0;
+  for (const e of ctx.db.events.iter()) {
+    if ((e.type === 'placed' || e.type === 'used') && e.ts_ms > last) last = e.ts_ms;
+  }
+  if (last === 0) return; // never seen anything: the device is probably off, not the wearer
+  const idleMin = (now_ms - last) / 60_000;
+  if (idleMin < NO_ACTIVITY_MIN) return;
+  const hours = Math.max(1, Math.round(idleMin / 60));
+  raiseCarerAlert(ctx, now_ms, 'no_activity', '', `No activity seen for about ${hours} hour${hours === 1 ? '' : 's'}.`);
+}
+
+function runAlertChecks(ctx: Ctx, now_ms: number) {
+  checkPills(ctx, now_ms);
+  checkNoActivity(ctx, now_ms);
+}
+
+function serverNowMs(ctx: Ctx): number {
+  return Number(ctx.timestamp.microsSinceUnixEpoch / 1000n);
+}
+
+function ensureAlertSchedule(ctx: Ctx) {
+  if ([...ctx.db.alert_schedule.iter()].length > 0) return;
+  ctx.db.alert_schedule.insert({
+    scheduled_id: 0n,
+    scheduled_at: ScheduleAt.interval(BigInt(ALERT_CHECK_EVERY_MS) * 1000n),
+  });
+}
+
+// Runs every ALERT_CHECK_EVERY_MS from the alert_schedule row.
+export const check_alerts = spacetimedb.reducer(
+  { onSchedule: alert_schedule },
+  { timer: alert_schedule.rowType },
+  (ctx, _args) => {
+    runAlertChecks(ctx, serverNowMs(ctx));
+  }
+);
+
+// Same checks, right now, for testing and the demo. now_ms 0 = the server's current time.
+export const run_alert_checks_now = spacetimedb.reducer(
+  { now_ms: t.f64() },
+  (ctx, { now_ms }) => {
+    ensureAlertSchedule(ctx);
+    runAlertChecks(ctx, now_ms > 0 ? now_ms : serverNowMs(ctx));
+  }
+);
+
+// Makes sure check_alerts is scheduled. Safe to call any number of times (the backend calls it at startup).
+export const start_alert_checks = spacetimedb.reducer(ctx => {
+  ensureAlertSchedule(ctx);
+});
+
+// A brand-new database schedules the checks itself.
+export const init = spacetimedb.init(ctx => {
+  ensureAlertSchedule(ctx);
+});
+
 // Clears everything the device has taught the memory, keeping items and areas. For between demo runs.
 export const reset_memory = spacetimedb.reducer(ctx => {
   for (const r of [...ctx.db.sightings.iter()]) ctx.db.sightings.id.delete(r.id);
@@ -365,4 +523,5 @@ export const reset_memory = spacetimedb.reducer(ctx => {
   for (const r of [...ctx.db.routines.iter()]) ctx.db.routines.id.delete(r.id);
   for (const r of [...ctx.db.alerts.iter()]) ctx.db.alerts.id.delete(r.id);
   for (const r of [...ctx.db.tracking.iter()]) ctx.db.tracking.item_id.delete(r.item_id);
+  for (const r of [...ctx.db.status.iter()]) ctx.db.status.key.delete(r.key);
 });

@@ -9,6 +9,7 @@ import { Pillars } from "@/sections/Pillars";
 import { Privacy } from "@/sections/Privacy";
 import { Problem } from "@/sections/Problem";
 import { Product } from "@/sections/Product";
+import { Setup } from "@/sections/Setup";
 import { Team } from "@/sections/Team";
 import { WhoFor } from "@/sections/WhoFor";
 
@@ -20,6 +21,7 @@ export default function HomePage() {
         <Hero />
         <Problem />
         <HowItWorks />
+        <Setup />
         <Pillars />
         <WhoFor />
         <Privacy />

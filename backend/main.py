@@ -3,6 +3,7 @@
 Run from the repo root:  python -m backend.main
 """
 
+import asyncio
 import logging
 import os
 import time
@@ -15,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from backend import agent, settings, speech
+from backend import agent, alerts, settings, spacetime_client, speech
 
 log = logging.getLogger("nemo.backend")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -35,7 +36,15 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:
         speech_error = str(exc)
         log.error("speech failed to load, /ask is off: %s", exc)
+
+    # Carer alerts: make sure Spacetime's check_alerts is scheduled, then text whatever it raises.
+    try:
+        await run_in_threadpool(spacetime_client.call, "start_alert_checks")
+    except Exception as exc:
+        log.warning("could not schedule check_alerts in Spacetime: %s", exc)
+    sender = asyncio.create_task(alerts.sender_loop())
     yield
+    sender.cancel()
 
 
 app = FastAPI(title="Nemo backend", lifespan=lifespan)

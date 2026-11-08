@@ -6,7 +6,7 @@ export function Demo() {
   return (
     <section aria-labelledby="demo-title" className="section bg-navy/[0.05]" id="demo">
       <div className="container-page">
-        <SectionLabel index="07">See it in action</SectionLabel>
+        <SectionLabel index="08">See it in action</SectionLabel>
         <div className="mt-14 grid gap-14 lg:grid-cols-12 lg:gap-10">
           <Reveal className="lg:col-span-5">
             <h2 id="demo-title" className="display">

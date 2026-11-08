@@ -20,6 +20,8 @@ target/
 
 # Models, data, captures (big and/or private)
 *.pt
+# YOLOE text encoder, downloaded next to the weights on first use
+mobileclip*.ts
 *.onnx
 *.engine
 data/

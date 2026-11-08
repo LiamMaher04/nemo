@@ -29,7 +29,7 @@ const rules = [
   },
   {
     title: "Listens only when asked",
-    body: "The microphone turns on only when you press the button.",
+    body: "The microphone is on only while you hold the button.",
     icon: (
       <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden="true">
         <rect x="18" y="6" width="12" height="22" rx="6" {...line} />
@@ -43,7 +43,7 @@ export function Privacy() {
   return (
     <section aria-labelledby="privacy-title" className="on-navy section" id="privacy">
       <div className="container-page">
-        <SectionLabel index="05">Privacy</SectionLabel>
+        <SectionLabel index="06">Privacy</SectionLabel>
         <div className="mt-14 grid gap-10 lg:grid-cols-12">
           <Reveal className="lg:col-span-7">
             <h2 id="privacy-title" className="display">
@@ -77,13 +77,14 @@ export function Privacy() {
             <h3 className="text-xl">What goes online</h3>
             <p className="mt-3">
               A laptop at home does the looking. To remember where things are and to put answers into words, Nemo uses online
-              services, and it only ever sends those small snapshots of your things. Never video.
+              services. It sends only small snapshots of your things and the words of your question. Never video.
             </p>
           </Reveal>
           <Reveal delay={0.06} className="rule pt-6">
             <h3 className="text-xl">What it&rsquo;s for</h3>
             <p className="mt-3">
-              Finding your keys, your glasses, the remote. Nemo is there to help you with your things. That&rsquo;s the whole job.
+              Finding your keys, your glasses, the remote, indoors at home. Its eyes are open whenever it&rsquo;s on, so you can
+              always tell. Nemo is there to help you with your things.
             </p>
           </Reveal>
         </div>

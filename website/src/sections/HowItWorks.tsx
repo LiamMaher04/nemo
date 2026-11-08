@@ -19,13 +19,12 @@ const art = [
     <circle cx="52" cy="46" r="11" fill={colors.navy} />
     <path d="M86 34c5 4 5 12 0 16M95 27c9 8 9 22 0 30" fill="none" stroke={colors.aqua} strokeWidth="2" strokeLinecap="round" />
   </svg>,
-  // 3: the answer, with a photo of the spot
+  // 3: the answer, spoken out loud: the place and how long ago
   <svg key="3" viewBox="0 0 120 80" className="h-20 w-auto" aria-hidden="true">
-    <rect x="18" y="12" width="70" height="50" rx="6" {...stroke} />
-    <path d="M18 48h70" {...stroke} />
-    <circle cx="52" cy="40" r="5" {...stroke} />
-    <circle cx="52" cy="40" r="15" fill="none" stroke={colors.coral} strokeWidth="2.5" strokeDasharray="4 5" />
-    <path d="M94 22h16M94 32h12" fill="none" stroke={colors.aqua} strokeWidth="2" strokeLinecap="round" />
+    <path d="M14 14h66a8 8 0 0 1 8 8v26a8 8 0 0 1-8 8H44l-14 12v-12H14a8 8 0 0 1-8-8V22a8 8 0 0 1 8-8z" {...stroke} />
+    <path d="M47 27c-6 0-10 4.5-10 10 0 7 10 13 10 13s10-6 10-13c0-5.5-4-10-10-10z" fill="none" stroke={colors.coral} strokeWidth="2.5" strokeLinejoin="round" />
+    <circle cx="47" cy="37" r="3" fill={colors.coral} />
+    <path d="M98 26c5 4 5 12 0 16M106 19c9 8 9 22 0 30" fill="none" stroke={colors.aqua} strokeWidth="2" strokeLinecap="round" />
   </svg>,
 ];
 
@@ -35,12 +34,12 @@ const steps = [
     body: "Wear Nemo as you go about your day. Nemo notices where everyday things get put down. Nothing to tag, nothing to set up on each item.",
   },
   {
-    title: "You press and ask",
-    body: "Can’t find something? Press the one button and ask the way you’d ask a friend: “Where are my glasses?”",
+    title: "You hold the button and ask",
+    body: "Can’t find something? Hold the one button and ask the way you’d ask a friend: “Where are my glasses?”",
   },
   {
     title: "Nemo tells you where",
-    body: "Nemo answers out loud, “I last saw your glasses on the bookshelf,” and shows a snapshot of the spot on its little screen.",
+    body: "Nemo answers out loud with the place and the time: “Your glasses are on the bookshelf in the living room. I saw them there about 20 minutes ago.”",
   },
 ];
 
