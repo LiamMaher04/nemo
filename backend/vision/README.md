@@ -49,7 +49,12 @@ python -m backend.vision.run --camera 1        # another camera
 python -m backend.vision.run --folder path/    # every .jpg / .jpeg in a folder, in name order
 python -m backend.vision.run --folder path/ --show   # boxes drawn; any key = next image, q = quit
 python -m backend.vision.run --url http://<device-ip>/jpg   # poll a JPEG URL (e.g. Nemo) as fast as it answers
+python -m backend.vision.run --url http://<device-ip>/jpg --save backend/vision/captures/
 ```
+
+`--save DIR` works with any source. Every KEPT frame is saved as `DIR/<run start>_<frame_id>.jpg`
+(e.g. `20261108-013502_000042.jpg`), faces blurred first. A DIR inside the repo must be
+gitignored or the runner refuses to start; `backend/vision/captures/` and `test_images/` already are.
 
 It prints the sharpness of every frame, why dropped frames were dropped, each sighting and frame
 report on one line (`thumb_b64` as its length), and the time per frame. The first kept frame is
