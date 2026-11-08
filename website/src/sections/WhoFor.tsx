@@ -6,13 +6,13 @@ const audiences = [
     label: "If it’s for you",
     title: "For staying independent",
     body: "You don’t need anyone hovering. You just need to find your glasses before the kettle boils.",
-    points: ["Find your own things, in seconds", "No asking around, no waiting", "Works the way you already talk"],
+    points: ["Find your own things, in seconds", "A friendly reminder when it’s time for your pills", "Works the way you already talk"],
   },
   {
     label: "If it’s for your mom or dad",
     title: "For peace of mind",
     body: "You want them to feel capable at home, and you’d like to worry a little less between visits.",
-    points: ["Fewer “have you seen my…?” calls", "More independence for the people you love", "A gift that respects them"],
+    points: ["Fewer “have you seen my…?” calls", "A text if something seems off, so you know to check in", "More independence for the people you love"],
   },
 ];
 

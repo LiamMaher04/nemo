@@ -29,7 +29,7 @@ const DISPLAY_BG = "#0F1A26";
  */
 export function DeviceModel({
   className,
-  label = "Nemo, a small slate blue device about the size of a deck of cards, with a small screen near the top, a camera lens below it and a coral button on its side, shown in 3D.",
+  label = "Nemo, a small slate blue device about the size of a deck of cards, with a small screen showing a pair of eyes near the top, a camera lens below it and a coral button on its side, shown in 3D.",
   hint = false,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -44,8 +44,6 @@ export function DeviceModel({
     (async () => {
       const THREE = await import("three");
       const { RoomEnvironment } = await import("three/examples/jsm/environments/RoomEnvironment.js");
-      // Wait for the brand fonts so the little screen is drawn in Poppins.
-      await document.fonts.ready.catch(() => undefined);
       if (disposed) return;
 
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -292,7 +290,7 @@ function circlePath(THREE: Three, x: number, y: number, r: number) {
   return path;
 }
 
-/** What the screen shows, like a small OLED display: the answer to "Where are my keys?". */
+/** What the screen shows: just a pair of eyes, open while Nemo is on (it shows no text). */
 function drawScreen(THREE: Three) {
   const W = 800;
   const H = 400;
@@ -301,25 +299,14 @@ function drawScreen(THREE: Three) {
   c.height = H;
   const g = c.getContext("2d");
   if (g) {
-    const heading = getComputedStyle(document.documentElement).getPropertyValue("--font-poppins").trim() || "sans-serif";
     g.fillStyle = DISPLAY_BG;
     g.fillRect(0, 0, W, H);
-    g.textBaseline = "middle";
-    g.fillStyle = colors.coral;
-    g.beginPath();
-    g.arc(62, 92, 14, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = "rgba(247,243,236,0.72)";
-    g.font = `500 54px ${heading}`;
-    g.fillText("Keys \u00b7 20 min ago", 96, 94);
-    g.fillStyle = colors.cream;
-    let size = 118;
-    g.font = `600 ${size}px ${heading}`;
-    while (g.measureText("Kitchen table").width > W - 80 && size > 40) {
-      size -= 4;
-      g.font = `600 ${size}px ${heading}`;
+    g.fillStyle = "#EAF6F7";
+    for (const x of [W * 0.33, W * 0.67]) {
+      g.beginPath();
+      g.ellipse(x, H * 0.5, 62, 92, 0, 0, Math.PI * 2);
+      g.fill();
     }
-    g.fillText("Kitchen table", 40, 250);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;

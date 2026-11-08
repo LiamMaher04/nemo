@@ -4,11 +4,12 @@ import { SectionLabel } from "@/components/SectionLabel";
 
 const specs = [
   { term: "Size", detail: "About the size of a deck of cards, and light enough to forget." },
-  { term: "Wear it", detail: "On a shirt, a pocket, a lanyard or a necklace." },
-  { term: "Controls", detail: "One button, easy to find by feel." },
-  { term: "Answers", detail: "Out loud, in a clear voice, with a snapshot on its small screen." },
-  { term: "Works", detail: "Around your home, over WiFi, with its paired device." },
-  { term: "Charging", detail: "A standard USB-C cable." },
+  { term: "Wear it", detail: "Clipped to your shirt at chest height, or on a lanyard, so it sees what you see." },
+  { term: "Controls", detail: "One button on the side, easy to find by feel. Hold it and talk." },
+  { term: "Answers", detail: "Out loud, in a clear voice, with the place and how long ago." },
+  { term: "Screen", detail: "Just a pair of eyes: open while Nemo is on, closed when it’s off." },
+  { term: "Works", detail: "Indoors at home, over WiFi, with a small hub (for now, a laptop)." },
+  { term: "Power", detail: "USB-C, from a small power bank in your pocket." },
 ];
 
 export function Product() {
