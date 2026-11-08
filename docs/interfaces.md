@@ -15,11 +15,23 @@ commit as the code change, and tell the team.
 
 ### POST /ask
 - The wearer holds the button and asks out loud. The device records while the button is held.
-- Body: raw audio. `audio/wav`, 16 kHz, mono, 16-bit PCM.
+- Body: raw audio. `audio/wav`, 16 kHz, mono, 16-bit PCM. (Other rates or stereo are converted.)
 - Headers: `X-Device-Id`.
-- Backend: speech to text (faster-whisper; also test Nemotron 3 Nano Omni) -> agent -> text to
-  speech.
-- Response: `200`, `Content-Type: audio/wav` (the spoken answer, played on Nemo's speaker).
+- Backend (`backend/speech.py`, models loaded once at startup):
+  - speech to text: faster-whisper, `STT_MODEL` (default `small.en`), on CPU, int8;
+  - the same agent as `/ask_text`;
+  - text to speech, by `TTS_PROVIDER`: `local` = Piper (`PIPER_VOICE`, files in `data/voices/`,
+    offline, no key), `elevenlabs` = `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID`, model
+    `eleven_flash_v2_5`, `pcm_16000` output. If ElevenLabs fails for any reason, the answer is
+    spoken with the local Piper voice instead (Piper is always loaded). ElevenLabs' free plan
+    can't use voice-library voices over the API (402); use a default voice or a paid plan.
+  - Also test Nemotron 3 Nano Omni for speech to text later.
+- Response: `200`, `Content-Type: audio/wav`, 16 kHz, mono, 16-bit PCM (the spoken answer, played
+  on Nemo's speaker), with headers `X-Question-Text` and `X-Answer-Text` (UTF-8, percent-encoded)
+  and `X-Voice` (`local` | `elevenlabs`, the voice actually used).
+  If nothing was heard it still answers out loud ("Sorry, I didn't catch that..."). `400` if the
+  body isn't a WAV, `503` if speech didn't load at startup.
+- Each part is timed in the log: speech to text, agent, text to speech, total.
 
 ### POST /ask_text
 - Text in, text out, for testing the agent without the device (no speech).
@@ -84,6 +96,10 @@ Arguments, in this order:
 ### Seed reducers (demo items and areas)
 - `upsert_item(item_id, name, category, importance, aliases, attributes_json)`
 - `upsert_area(area_id, name, room)`
+
+### record_alert(type, item_id, message, channel, ts_ms, sent)
+Appends one row to `alerts`. `item_id` `""` if none, `channel` `"spoken"` | `"carer"`, `ts_ms` f64,
+`sent` bool (whether it actually went out).
 
 ### reset_memory()
 Clears `sightings`, `item_state`, `events`, `routines`, `alerts` and `tracking`. Keeps `items` and
@@ -152,18 +168,39 @@ then OpenRouter):
 
 - `find_item(name)` -> `{"item_id", "name"}`, or `{"candidates": [...]}` if several match, or
   `{"found": false, "tracked_items": [...]}`. Matches items.name, item_id, aliases, then attributes.
-- `where_is(item_id)` -> `{"seen": false}`, or area name, room, furniture, spot_description,
-  minutes_ago, confidence, candidates.
+- `where_is(item_id)` -> `{"seen": false}`, or spot (a ready-to-say phrase such as "on the sofa by
+  the couch"), area name, furniture, spot_description, minutes_ago, confidence, candidates.
 - `item_history(item_id)` -> the 10 newest events (type, minutes_ago, to) and `uses_by_hour` from
   `routines`.
 
 Still to build:
 - `look_at_snapshot(item_id)` -> Nemotron 3.5 Super VL looks at the latest snapshot, to double-check
   a location or confirm a fall.
-- `send_carer_alert(message)` -> sends an iMessage/SMS through Photon (Spectrum TypeScript SDK) and
-  writes the row to `alerts`. One way only.
+- `send_carer_alert(type, message)` as an agent tool. The Python function exists already
+  (`backend/alerts.py`, see section 5); it isn't wired into the agent yet.
 
 ## 5. Alerts
+
+### Backend -> notifier (carer texts)
+`notifier/` is a small Bun + TypeScript service using Photon's Spectrum SDK (`spectrum-ts`, iMessage
+provider). It reads `SPECTRUM_PROJECT_ID`, `SPECTRUM_PROJECT_SECRET`, `CARER_PHONE` (E.164, e.g.
+`+15551234567`) and `NOTIFIER_PORT` (default 8100) from the repo-root `.env`. One way only.
+
+`POST http://127.0.0.1:{NOTIFIER_PORT}/alert`
+- Body: `{"type": "pills_missed", "message": "..."}`
+- Response: `200 {"ok": true}` once Photon accepts it (not a delivery receipt), or
+  `502 {"ok": false, "error": "..."}`; `400` for a bad body.
+
+Python: `backend/alerts.py`
+- `notify(type, message)` -> `(ok, error)`: calls the notifier only, never raises.
+- `send_carer_alert(type, message, item_id="")` -> `{"sent", "error", "ms"}`: calls the notifier
+  AND writes the alert with `record_alert` (channel `"carer"`, sent true/false).
+
+Photon free/pro plans use a shared line that only texts numbers that are BOTH added as **Users** in
+the Photon dashboard AND have texted the shared line first (any message). Until then sends fail
+with `PERMISSION_DENIED: Target not allowed for this project`. Business gives a dedicated line.
+
+### What raises alerts (not built yet)
 
 - **Spoken to the wearer** (through `GET /say`): reminders, e.g. around the usual pill time.
 - **Texted to the carer** (through Photon):

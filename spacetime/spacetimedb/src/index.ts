@@ -340,6 +340,23 @@ export const add_frame = spacetimedb.reducer(
   }
 );
 
+// ---- Alerts ----
+
+// Records a spoken reminder or a carer text, and whether it was sent.
+export const record_alert = spacetimedb.reducer(
+  {
+    type: t.string(),
+    item_id: t.string(),
+    message: t.string(),
+    channel: t.string(), // "spoken" | "carer"
+    ts_ms: t.f64(),
+    sent: t.bool(),
+  },
+  (ctx, args) => {
+    ctx.db.alerts.insert({ id: 0n, ...args });
+  }
+);
+
 // Clears everything the device has taught the memory, keeping items and areas. For between demo runs.
 export const reset_memory = spacetimedb.reducer(ctx => {
   for (const r of [...ctx.db.sightings.iter()]) ctx.db.sightings.id.delete(r.id);

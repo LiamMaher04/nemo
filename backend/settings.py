@@ -30,7 +30,17 @@ NEMOTRON_AGENT_MODEL: str = _clean(os.getenv("NEMOTRON_AGENT_MODEL"), "nvidia/ne
 
 OPENROUTER_BASE_URL: str = _clean(os.getenv("OPENROUTER_BASE_URL"), "https://openrouter.ai/api/v1")
 OPENROUTER_API_KEY: str = _clean(os.getenv("OPENROUTER_API_KEY"), "")
-OPENROUTER_MODEL: str = _clean(os.getenv("OPENROUTER_MODEL"), "nvidia/nemotron-3.5-lightning-30b-a3b")
+OPENROUTER_MODEL: str = _clean(os.getenv("OPENROUTER_MODEL"), "nvidia/nemotron-3.5-lightning:free")
+
+NOTIFIER_PORT: int = int(_clean(os.getenv("NOTIFIER_PORT"), "8100"))
+NOTIFIER_URL: str = f"http://127.0.0.1:{NOTIFIER_PORT}"
+
+STT_MODEL: str = _clean(os.getenv("STT_MODEL"), "small.en")  # faster-whisper model name
+TTS_PROVIDER: str = _clean(os.getenv("TTS_PROVIDER"), "local").lower()  # "local" | "elevenlabs"
+PIPER_VOICE: str = _clean(os.getenv("PIPER_VOICE"), "en_US-lessac-medium")
+VOICES_DIR: Path = REPO_ROOT / "data" / "voices"
+ELEVENLABS_API_KEY: str = _clean(os.getenv("ELEVENLABS_API_KEY"), "")
+ELEVENLABS_VOICE_ID: str = _clean(os.getenv("ELEVENLABS_VOICE_ID"), "")
 
 CAPTURES_DIR: Path = REPO_ROOT / "captures"
 LATEST_FRAME: Path = CAPTURES_DIR / "latest.jpg"

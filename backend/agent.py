@@ -26,10 +26,17 @@ Use the tools to look things up before answering. First find_item to work out wh
 mean, then where_is. Use item_history for questions about whether something was used (for \
 example "have I taken my pills?") or when it was last moved around.
 
+When you say where something is, use the "spot" from where_is word for word (for example "on the \
+sofa by the couch"). Don't add a room or any other place that isn't in the tool results.
+
 Say times the way a person would: "about 20 minutes ago", "about 2 hours ago", "earlier today". \
 Never make up a place, a time or an item. If find_item doesn't find the item, say you don't keep \
 track of that. If you've never seen the item, say so. If the confidence is low or there are \
-look-alike candidates, say you're not sure."""
+look-alike candidates, say you're not sure.
+
+A "used" event is only a sign, not proof: it means the item went missing from its spot and came \
+back. So hedge it, for example "It looks like you took your pills about an hour ago", never "You \
+took your pills". Don't give medical advice."""
 
 TOOLS = [
     {
@@ -109,19 +116,31 @@ def find_item(name: str) -> dict[str, Any]:
     return {"found": False, "tracked_items": [it["name"] for it in items]}
 
 
+def _spot_phrase(furniture: str, area: str) -> str:
+    """Say a spot the way a person would: "on the sofa by the couch", or "on the desk"."""
+    if not furniture:
+        return f"by the {area}"
+    if furniture.lower() == area.lower():
+        return f"on the {furniture}"
+    by = area if area[-1:].isdigit() else f"the {area}"  # "by bed 1", "by the couch"
+    return f"on the {furniture} by {by}"
+
+
 def where_is(item_id: str) -> dict[str, Any]:
     rows = st.sql(f"SELECT * FROM item_state WHERE item_id = {_quote(item_id)}")
     if not rows:
         return {"item_id": item_id, "seen": False}
     s = rows[0]
-    area = st.sql(f"SELECT * FROM areas WHERE area_id = {_quote(s['area_id'])}")
+    area_rows = st.sql(f"SELECT * FROM areas WHERE area_id = {_quote(s['area_id'])}")
+    area = area_rows[0]["name"] if area_rows else s["area_id"].replace("_", " ")
+    furniture = s["furniture"]
     candidates = json.loads(s["candidates_json"]) if s["candidates_json"] else []
     return {
         "item_id": item_id,
         "seen": True,
-        "area": area[0]["name"] if area else s["area_id"],
-        "room": area[0]["room"] if area else "",
-        "furniture": s["furniture"],
+        "spot": _spot_phrase(furniture, area),
+        "area": area,
+        "furniture": furniture,
         "spot_description": s["spot_description"],
         "minutes_ago": _minutes_ago(s["last_seen_ts_ms"]),
         "confidence": round(s["confidence"], 2),
