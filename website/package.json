@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "draw:illustrations": "node scripts/draw-illustrations.mjs",
     "check:contrast": "node scripts/check-contrast.mjs"
   },
   "dependencies": {

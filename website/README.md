@@ -26,6 +26,7 @@ npm run build           # production build
 npm run start           # serve the production build
 npm run lint            # ESLint
 npm run check:contrast  # checks WCAG contrast for the brand colour pairs
+npm run draw:illustrations  # redraws the How it works and Privacy scenes
 ```
 
 ## Deploy to Vercel
@@ -65,6 +66,7 @@ src/
   components/            ← Logo, Header, DeviceModel (3D), RoomMap, AskNemoDemo, FaqAccordion, WaitlistForm, Reveal…
   sections/              ← one file per page section, top to bottom
 scripts/check-contrast.mjs
+scripts/draw-illustrations.mjs ← draws the scenes in public/illustrations (npm run draw:illustrations)
 ```
 
 Sections, in page order: Header · Hero · The problem · How it works · Why Nemo (Independence, Calm, Effortless) · Who it's for · Privacy · The product · Demo · Team · FAQ · Final CTA / waitlist · Footer.

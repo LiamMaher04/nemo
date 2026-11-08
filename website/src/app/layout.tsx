@@ -50,8 +50,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${poppins.variable} ${inter.variable}`}>
-      <body>
+    <html suppressHydrationWarning lang="en" className={`${poppins.variable} ${inter.variable}`}>
+      <body suppressHydrationWarning>
         <a
           href="#main"
           className="sr-only z-[100] rounded-full bg-navy px-6 py-3 font-heading font-semibold text-cream focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
