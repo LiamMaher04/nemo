@@ -116,24 +116,61 @@ def handle(jpeg: bytes) -> dict[str, Any]:
         _busy.release()
 
 
+def _sharpness(jpeg: bytes) -> float:
+    """Josie's sharpness score (variance of the Laplacian) for a JPEG; 0 if it can't be decoded."""
+    import cv2
+    import numpy as np
+    from backend.vision import gate
+
+    grey = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_GRAYSCALE)
+    return gate.sharpness(grey) if grey is not None else 0.0
+
+
+async def _fetch(client: httpx.AsyncClient) -> bytes | None:
+    """One JPEG from Nemo, or None (503 while Nemo records, bad reply, or no answer)."""
+    try:
+        r = await client.get(settings.NEMO_JPG_URL)
+    except Exception as exc:  # Nemo off or out of range: the caller keeps trying
+        log.warning("could not fetch a frame: %s", exc)
+        return None
+    if r.status_code == 503:
+        # Nemo answers 503 while it's recording (button held): skip quietly.
+        log.debug("GET %s -> 503 (Nemo busy recording), skipping", settings.NEMO_JPG_URL)
+        return None
+    if r.status_code == 200 and r.content.startswith(b"\xff\xd8"):
+        return r.content
+    log.warning("GET %s -> %d, not a JPEG", settings.NEMO_JPG_URL, r.status_code)
+    return None
+
+
 async def pull_loop() -> None:
-    """FRAME_SOURCE=pull: fetch NEMO_JPG_URL once a second and handle each JPEG."""
-    log.info("pulling frames from %s once a second", settings.NEMO_JPG_URL)
+    """FRAME_SOURCE=pull: every second, fetch a short burst of frames from Nemo and handle the sharpest.
+
+    A single frame a second is often taken mid-step and blurred. Fetching BURST_FRAMES back to back
+    (about 0.1 s apart) and keeping the sharpest gives vision a much better frame for the same
+    one-a-second rate. Sharpness is scored here (about 20 ms per frame) with Josie's gate function.
+    """
+    log.info("pulling frames from %s once a second (sharpest of a burst of %d)",
+             settings.NEMO_JPG_URL, settings.BURST_FRAMES)
     async with httpx.AsyncClient(timeout=5.0) as client:
         while True:
             started = time.monotonic()
-            try:
-                r = await client.get(settings.NEMO_JPG_URL)
-                if r.status_code == 503:
-                    # Nemo answers 503 while it's recording (button held): skip this second quietly.
-                    log.debug("GET %s -> 503 (Nemo busy recording), skipping", settings.NEMO_JPG_URL)
-                elif r.status_code == 200 and r.content.startswith(b"\xff\xd8"):
-                    if _busy.locked() or answering.is_set():
-                        stats["skipped_busy"] += 1
-                    else:
-                        await asyncio.to_thread(handle, r.content)
-                else:
-                    log.warning("GET %s -> %d, not a JPEG", settings.NEMO_JPG_URL, r.status_code)
-            except Exception as exc:  # Nemo off or out of range: keep trying
-                log.warning("could not fetch a frame: %s", exc)
+            if _busy.locked() or answering.is_set():
+                stats["skipped_busy"] += 1
+            else:
+                best: bytes | None = None
+                best_sharp = -1.0
+                scores = []
+                for _ in range(max(1, settings.BURST_FRAMES)):
+                    jpeg = await _fetch(client)
+                    if jpeg is None:
+                        break  # Nemo is busy or away: don't hammer it, try again next second
+                    sharp = await asyncio.to_thread(_sharpness, jpeg)
+                    scores.append(round(sharp, 1))
+                    if sharp > best_sharp:
+                        best, best_sharp = jpeg, sharp
+                if best is not None:
+                    if len(scores) > 1:
+                        log.debug("burst sharpness %s -> kept %.1f", scores, best_sharp)
+                    await asyncio.to_thread(handle, best)
             await asyncio.sleep(max(0.0, 1.0 - (time.monotonic() - started)))

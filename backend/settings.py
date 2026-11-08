@@ -48,6 +48,7 @@ NEMO_URL: str = _clean(os.getenv("NEMO_URL"), "").rstrip("/")  # Nemo's base add
 
 FRAME_SOURCE: str = _clean(os.getenv("FRAME_SOURCE"), "post").lower()  # "post" | "pull"
 NEMO_JPG_URL: str = _clean(os.getenv("NEMO_JPG_URL"), "")  # e.g. http://172.20.10.9/jpg, for "pull"
+BURST_FRAMES: int = int(_clean(os.getenv("BURST_FRAMES"), "3"))  # pull mode: frames fetched per second, sharpest kept
 
 CAPTURES_DIR: Path = REPO_ROOT / "captures"
 FRAMES_DIR: Path = CAPTURES_DIR / "frames"  # the last FRAMES_KEPT kept frames, <frame_id>.jpg
