@@ -8,7 +8,7 @@ export function Faq() {
   return (
     <section aria-labelledby="faq-title" className="section pt-0 sm:pt-0" id="faq">
       <div className="container-page">
-        <SectionLabel index="09">Questions</SectionLabel>
+        <SectionLabel index="10">Questions</SectionLabel>
         <div className="mt-14 grid gap-12 lg:grid-cols-12 lg:gap-10">
           <Reveal className="lg:col-span-4">
             <h2 id="faq-title" className="text-4xl sm:text-5xl">

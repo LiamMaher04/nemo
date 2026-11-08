@@ -20,6 +20,12 @@ export const faqs = [
     ],
   },
   {
+    q: "Is it hard to set up?",
+    a: [
+      "No, and you only do it once. When I come out of the box, walk me around your home room by room. In each room, hold my button and say its name, like “kitchen” or “bedroom.” That’s how I learn your rooms. After that, you just wear me.",
+    ],
+  },
+  {
     q: "What can it find?",
     a: [
       "Right now: keys, glasses, the TV remote and a pill box. We’re working on teaching me more as we go.",

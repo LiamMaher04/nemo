@@ -43,7 +43,7 @@ export function Privacy() {
   return (
     <section aria-labelledby="privacy-title" className="on-navy section" id="privacy">
       <div className="container-page">
-        <SectionLabel index="05">Privacy</SectionLabel>
+        <SectionLabel index="06">Privacy</SectionLabel>
         <div className="mt-14 grid gap-10 lg:grid-cols-12">
           <Reveal className="lg:col-span-7">
             <h2 id="privacy-title" className="display">

@@ -15,7 +15,7 @@ export function Product() {
   return (
     <section aria-labelledby="product-title" className="section" id="product">
       <div className="container-page">
-        <SectionLabel index="06">The device</SectionLabel>
+        <SectionLabel index="07">The device</SectionLabel>
         <Reveal>
           <h2 id="product-title" className="display mt-14 max-w-4xl">
             Small enough to wear all day. Simple enough to forget it&rsquo;s there.

@@ -6,7 +6,7 @@ export function Team() {
   return (
     <section aria-labelledby="team-title" className="section" id="team">
       <div className="container-page">
-        <SectionLabel index="08">The team</SectionLabel>
+        <SectionLabel index="09">The team</SectionLabel>
         <div className="mt-14 grid gap-14 lg:grid-cols-12 lg:gap-10">
           <Reveal className="lg:col-span-6">
             <h2 id="team-title" className="text-4xl sm:text-5xl">
