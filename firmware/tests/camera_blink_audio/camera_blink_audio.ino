@@ -29,9 +29,9 @@
 const char* SSID = "YOUR_HOTSPOT_NAME";
 const char* PASS = "YOUR_PASSWORD";
 
-// When the backend /ask is ready, set this to its address, e.g. "http://172.20.10.5:8000/ask".
-// Leave it empty ("") to just echo your recording on the speaker (works with no backend).
-const char* BACKEND_ASK_URL = "";
+// The backend /ask on Liam's laptop (on the "iPhone de Laura" hotspot it is 172.20.10.11).
+// If the laptop's IP changes, update this. Set it to "" to just echo your recording instead.
+const char* BACKEND_ASK_URL = "http://172.20.10.11:8000/ask";
 
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM -1
@@ -177,7 +177,8 @@ bool postAskAndPlay(uint8_t* wav, size_t wavLen) {
   HTTPClient http;
   if (!http.begin(BACKEND_ASK_URL)) return false;
   http.addHeader("Content-Type", "audio/wav");
-  http.setTimeout(10000);
+  http.addHeader("X-Device-Id", "nemo-a");
+  http.setTimeout(30000);   // speech to text + agent + voice usually takes ~6 s, the first one longer
   int code = http.POST(wav, wavLen);
   bool ok = false;
   if (code == 200) {
