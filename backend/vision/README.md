@@ -88,8 +88,27 @@ python -m backend.vision.run --url http://<device-ip>/jpg --save backend/vision/
 ```
 
 `--save DIR` works with any source. Every KEPT frame is saved as `DIR/<run start>_<frame_id>.jpg`
-(e.g. `20261108-013502_000042.jpg`), faces blurred first. A DIR inside the repo must be
-gitignored or the runner refuses to start; `backend/vision/captures/` and `test_images/` already are.
+(e.g. `20261108-013502_000042.jpg`), faces blurred first, no boxes drawn. A DIR inside the repo
+must be gitignored (for JPEGs and JSON) or the runner refuses to start; `backend/vision/captures/`
+and `refs/` already are.
+
+`--area NAME` labels the capture: kept frames go straight into `REFS_DIR/areas/NAME/` (or
+`--save DIR`), so standing at a spot for 30 s makes that area's references.
+
+Next to each saved JPEG is a JSON of what `process()` found (`<same name>.json`):
+
+```json
+{"version": 1, "image": "...jpg", "frame_id": 42, "ts_ms": 1794114087847.1, "width": 1920, "height": 1080,
+ "source": "camera 0", "sharpness": 183.4,
+ "area": {"area_id": "couch", "area_conf": 0.67, "vote": "couch", "best": "couch", "best_sim": 0.81, "next_sim": 0.64, "window": 3},
+ "area_label": "couch",
+ "items": [{"det": 0, "item_id": "tv_remote", "label": "tv remote control", "det_conf": 0.61,
+            "candidates": [["tv_remote", 0.83], ["phone", 0.71]], "match_margin": 0.12, "matched_by": "dino",
+            "furniture": "sofa", "rel_pos": [0.9, 0.2], "bbox": [812, 540, 140, 48]}],
+ "furniture": [{"name": "sofa", "label": "couch", "conf": 0.8, "bbox": [0, 400, 1900, 600]}],
+ "settings": {"DETECT_IMGSZ": 960, "DETECT_CONF": 0.25, "SHARPNESS_GATE": 40, "...": "..."}}
+```
+`area_label` is the `--area` name (or `null`); `matched_by` is `dino` or `yoloe`.
 
 It prints the sharpness of every frame, why dropped frames were dropped, each sighting and frame
 report on one line (`thumb_b64` as its length), and the time per frame. The first kept frame is

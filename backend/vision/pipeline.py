@@ -36,7 +36,8 @@ class VisionResult:
     sharpness: float  # filled for every frame, kept or dropped
     sightings: list[dict] = field(default_factory=list)  # add_sighting order, 14 keys
     frame: dict | None = None  # add_frame order, 7 keys; None if dropped
-    furniture_boxes: list[tuple[str, list[int], float]] = field(default_factory=list)  # for drawing
+    furniture_boxes: list[tuple[str, str, list[int], float]] = field(default_factory=list)  # (name, wording, [x,y,w,h], conf)
+    matched_by: list[str] = field(default_factory=list)  # per sighting: "dino" or "yoloe"
     ms: float = 0.0  # time spent in process()
     area: AreaMatch | None = None  # this frame's area vote and scores, for printing
     yoloe_ms: float = 0.0
@@ -227,8 +228,10 @@ def process(jpeg_bytes: bytes, frame_id: int, ts_ms: float) -> VisionResult:
     sharp_r = round(sharp, 2)
 
     sightings: list[dict] = []
+    matched_by: list[str] = []
     items_seen: set[str] = set()
     for group, use in zip(groups, use_dino):
+        matched_by.append("dino" if use else "yoloe")
         top = group[0]
         item_id, candidates, margin = _identify(group, next(crop_fps) if use else None)
         if item_id:
@@ -260,6 +263,6 @@ def process(jpeg_bytes: bytes, frame_id: int, ts_ms: float) -> VisionResult:
         "items_seen_json": _dumps(sorted(items_seen)),
         "sharpness": sharp_r,
     }
-    furniture_boxes = [(f.name, _xywh(f.xyxy), round(f.conf, 4)) for f in furniture]
-    return done(VisionResult(True, "", sharp, sightings, frame, furniture_boxes, area=area,
+    furniture_boxes = [(f.name, f.wording, _xywh(f.xyxy), round(f.conf, 4)) for f in furniture]
+    return done(VisionResult(True, "", sharp, sightings, frame, furniture_boxes, matched_by, area=area,
                              yoloe_ms=yoloe_ms, dino_ms=dino_ms))

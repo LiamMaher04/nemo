@@ -127,7 +127,7 @@ def short(report: dict) -> str:
 
 def draw(jpeg_bytes: bytes, result: VisionResult) -> np.ndarray:
     img = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
-    for name, (x, y, w, h), conf in result.furniture_boxes:
+    for name, _, (x, y, w, h), conf in result.furniture_boxes:
         cv2.rectangle(img, (x, y), (x + w, y + h), (255, 140, 0), 2)
         cv2.putText(img, f"{name} {conf:.2f}", (x + 4, y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 140, 0), 2)
     for s in result.sightings:
@@ -148,22 +148,89 @@ def check_save_dir(save_dir: Path) -> Path:
     """Create the --save folder. Inside the repo it must be gitignored (photos of our rooms)."""
     save_dir = save_dir.expanduser().resolve()
     if save_dir.is_relative_to(settings.REPO_ROOT):
-        probe = save_dir / "probe.jpg"
-        ignored = subprocess.run(["git", "-C", str(settings.REPO_ROOT), "check-ignore", "-q", str(probe)])
-        if ignored.returncode != 0:
+        # Probe a JPEG and a JSON: a folder only covered by "*.jpg" would still commit the JSONs.
+        probes = [str(save_dir / "probe.jpg"), str(save_dir / "probe.json")]
+        out = subprocess.run(["git", "-C", str(settings.REPO_ROOT), "check-ignore", *probes],
+                             capture_output=True, text=True).stdout  # one line per ignored path
+        if len(out.splitlines()) != len(probes):
             raise SystemExit(f"{save_dir} is inside the repo but not gitignored. "
                              "Use e.g. backend/vision/captures/ (ignored) or a folder outside the repo.")
     save_dir.mkdir(parents=True, exist_ok=True)
     return save_dir
 
 
-def save_frame(save_dir: Path, run_stamp: str, frame_id: int, jpeg_bytes: bytes) -> Path:
-    """Save a kept frame, faces blurred first (nothing is stored with faces in it)."""
+def save_frame(save_dir: Path, run_stamp: str, frame_id: int, jpeg_bytes: bytes,
+               result: VisionResult, source: str, area_label: str | None) -> Path:
+    """Save a kept frame (faces blurred, no boxes drawn) and, next to it, a JSON of what
+    process() found in it. Returns the JPEG's path."""
     bgr = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
     blurred = pipeline.blur_faces(bgr, cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY))
     path = save_dir / f"{run_stamp}_{frame_id:06d}.jpg"
     cv2.imwrite(str(path), blurred, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    detections = frame_json(path.name, bgr.shape, result, source, area_label)
+    write_json_atomic(path.with_suffix(".json"), detections)
     return path
+
+
+def frame_json(image: str, shape: tuple[int, ...], result: VisionResult, source: str,
+               area_label: str | None) -> dict:
+    """Everything process() found in one kept frame (format in README.md)."""
+    a = result.area
+    frame = result.frame or {}
+    items = []
+    for i, (s, how) in enumerate(zip(result.sightings, result.matched_by)):
+        items.append({
+            "det": i,
+            "item_id": s["item_id"],
+            "label": s["label"],
+            "det_conf": s["det_conf"],
+            "candidates": json.loads(s["candidates_json"]),
+            "match_margin": s["match_margin"],
+            "matched_by": how,
+            "furniture": s["furniture"],
+            "rel_pos": json.loads(s["rel_pos_json"]),
+            "bbox": json.loads(s["bbox_json"]),
+        })
+    return {
+        "version": 1,
+        "image": image,
+        "frame_id": frame.get("frame_id"),
+        "ts_ms": frame.get("ts_ms"),
+        "width": shape[1],
+        "height": shape[0],
+        "source": source,
+        "sharpness": round(result.sharpness, 2),
+        "area": {
+            "area_id": frame.get("area_id", ""),
+            "area_conf": frame.get("area_conf", 0.0),
+            "vote": a.vote if a else "",
+            "best": a.best if a else "",
+            "best_sim": round(a.best_sim, 4) if a else 0.0,
+            "next_sim": round(a.next_sim, 4) if a else 0.0,
+            "window": a.window if a else 0,
+        },
+        "area_label": area_label,
+        "items": items,
+        "furniture": [{"name": n, "label": w, "conf": c, "bbox": b} for n, w, b, c in result.furniture_boxes],
+        "settings": {
+            "DETECT_IMGSZ": settings.DETECT_IMGSZ,
+            "DETECT_CONF": settings.DETECT_CONF,
+            "SHARPNESS_GATE": settings.SHARPNESS_GATE,
+            "ITEM_SIM_MIN": settings.ITEM_SIM_MIN,
+            "ITEM_MARGIN_MIN": settings.ITEM_MARGIN_MIN,
+            "AREA_SIM_MIN": settings.AREA_SIM_MIN,
+            "AREA_MARGIN_MIN": settings.AREA_MARGIN_MIN,
+            "AREA_VOTE_S": settings.AREA_VOTE_S,
+            "AREA_VOTE_MIN": settings.AREA_VOTE_MIN,
+        },
+    }
+
+
+def write_json_atomic(path: Path, data: dict) -> None:
+    """Write to a temporary file, then rename, so a crash never leaves half a file."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=1))
+    tmp.replace(path)
 
 
 def main() -> None:
@@ -197,12 +264,15 @@ def main() -> None:
     if args.folder:
         print(f"source: folder {args.folder} (--fps ignored, every image is used)", flush=True)
         source = frames_from_folder(args.folder)
+        source_name = f"folder {args.folder}"
     elif args.url:
         print(f"source: {args.url}, frame rate limit {limit}", flush=True)
         source = frames_from_url(args.url, args.fps)
+        source_name = args.url
     else:
         print(f"source: camera {args.camera}, frame rate limit {limit}", flush=True)
         source = frames_from_camera(args.camera, args.fps)
+        source_name = f"camera {args.camera}"
     frame_id = 0
     try:
         for jpeg_bytes in source:
@@ -220,7 +290,8 @@ def main() -> None:
                     print(f"  sighting {short(s)}")
                 print(f"  frame    {short(result.frame or {})}", flush=True)
                 if save_dir:
-                    print(f"  saved    {save_frame(save_dir, run_stamp, frame_id, jpeg_bytes)}", flush=True)
+                    saved = save_frame(save_dir, run_stamp, frame_id, jpeg_bytes, result, source_name, args.area)
+                    print(f"  saved    {saved} (+ .json)", flush=True)
             else:
                 print(f"#{frame_id} sharpness {result.sharpness:.1f} DROPPED {result.drop_reason} "
                       f"{result.ms:.0f} ms", flush=True)
