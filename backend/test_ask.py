@@ -1,7 +1,7 @@
 """Test POST /ask end to end: a spoken question in, a spoken answer out.
 
 Makes "where's my remote?" as a WAV with the local Piper voice (so no mic needed), seeds the remote
-on the couch, POSTs the WAV to /ask, then checks, saves and plays the reply.
+on the sofa, POSTs the WAV to /ask, then checks, saves and plays the reply.
 
 Run from the repo root (TTS_PROVIDER from .env, or override it for one run):
     backend\\.venv\\Scripts\\python.exe -m backend.test_ask

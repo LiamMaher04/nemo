@@ -47,7 +47,7 @@ Agent tools: `find_item`, `where_is`, `item_history`, `look_at_snapshot` (Super 
 
 ```
 Nemo device (ESP32-S3 camera, Arduino)
-  | captures ~5-10 frames/s, sends the sharpest each second (1280 px+), POST /frame
+  | captures ~5-10 frames/s, sends the sharpest each second (1024 px+), POST /frame
   | hold button: records 16 kHz mono WAV, POST /ask, plays the WAV it gets back
   | polls the backend every few seconds for anything to say (reminders)
   v
@@ -140,8 +140,8 @@ QR markers, the carer app, texting back, face recognition, medical claims, no-re
   `POST {SPACETIME_URL}/v1/database/{SPACETIME_DB}/call/{reducer}` with a JSON array of the reducer's
   arguments as the body. Check the current docs (spacetimedb.com/docs) for auth headers.
 - **Camera:** OV3660, 160 degree fisheye, no IR-cut filter (colours wash out, don't rely on colour),
-  chest-mounted about 15 degrees down. Keep frames at 1280 px+ or keys vanish. Edge-of-frame
-  detections are low confidence.
+  chest-mounted about 15 degrees down. Keep frames at 1024 px or more (XGA) or keys vanish.
+  Edge-of-frame detections are low confidence.
 - **Firmware:** board "ESP32S3 Dev Module", PSRAM "OPI PSRAM" or the camera won't start.
   `WiFi.setSleep(false)` so the power bank doesn't switch off. OLED on `Wire.begin(43, 44)`.
   Don't hold BOOT while plugging in. The board runs hot.
@@ -150,6 +150,13 @@ QR markers, the carer app, texting back, face recognition, medical claims, no-re
 - **Secrets:** API keys live in `.env` only (gitignored), Wi-Fi details in `firmware/secrets.h`
   (gitignored). This repo is public. Never commit a key, never print one in logs.
 - MLH rule: project code is written at the event. Fine to use libraries, vendor examples and models.
+
+### Demo sets
+
+Two demo setups. The hotel set (room "hotel room": sofa, desk, fridge, TV, bedside table, bathroom)
+is for the demo video. The venue set (room "venue") is the judging table; its areas get added once we
+see it. Both are seeded together, and Nemo only reports areas it has seen. Vision will pick which
+set's area references to load with a `DEMO_SET` setting, added when the DINOv2 branch is merged.
 
 ## Style
 

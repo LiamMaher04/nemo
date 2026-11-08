@@ -47,6 +47,12 @@ ITEMS: dict[str, list[str]] = {
         "plastic pill box with small lids",
         "seven day pill box",
     ],
+    "toothbrush": [
+        "toothbrush",
+        "electric toothbrush",
+        "electric toothbrush standing upright",
+        "toothbrush lying on a counter",
+    ],
 }
 
 # area_ids exactly as in backend/seed_spacetime.py. Reference folders with other names still

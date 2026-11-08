@@ -10,7 +10,7 @@ commit as the code change, and tell the team.
 - Headers: `X-Device-Id: nemo-a`, `X-Frame-Ts: <ms since device boot>` (optional).
 - Response: `200 {"ok": true}`. The device ignores the body; it just keeps sending.
 - The device captures about 5 to 10 frames a second and sends only the sharpest one each second.
-- Resolution 1280 px wide or more (keys are tiny).
+- Resolution 1024 px wide or more (XGA, 1024x768; keys are tiny).
 - The backend also drops blurry and near-duplicate frames before running any models.
 
 ### POST /ask
