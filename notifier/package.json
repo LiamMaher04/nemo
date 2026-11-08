@@ -1,0 +1,17 @@
+{
+  "name": "nemo-notifier",
+  "private": true,
+  "type": "module",
+  "description": "Nemo carer texts through Photon Spectrum (iMessage)",
+  "scripts": {
+    "start": "bun --env-file=../.env index.ts",
+    "check": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "spectrum-ts": "^12.15.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}

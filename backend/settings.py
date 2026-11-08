@@ -32,5 +32,8 @@ OPENROUTER_BASE_URL: str = _clean(os.getenv("OPENROUTER_BASE_URL"), "https://ope
 OPENROUTER_API_KEY: str = _clean(os.getenv("OPENROUTER_API_KEY"), "")
 OPENROUTER_MODEL: str = _clean(os.getenv("OPENROUTER_MODEL"), "nvidia/nemotron-3.5-lightning:free")
 
+NOTIFIER_PORT: int = int(_clean(os.getenv("NOTIFIER_PORT"), "8100"))
+NOTIFIER_URL: str = f"http://127.0.0.1:{NOTIFIER_PORT}"
+
 CAPTURES_DIR: Path = REPO_ROOT / "captures"
 LATEST_FRAME: Path = CAPTURES_DIR / "latest.jpg"

@@ -85,6 +85,10 @@ Arguments, in this order:
 - `upsert_item(item_id, name, category, importance, aliases, attributes_json)`
 - `upsert_area(area_id, name, room)`
 
+### record_alert(type, item_id, message, channel, ts_ms, sent)
+Appends one row to `alerts`. `item_id` `""` if none, `channel` `"spoken"` | `"carer"`, `ts_ms` f64,
+`sent` bool (whether it actually went out).
+
 ### reset_memory()
 Clears `sightings`, `item_state`, `events`, `routines`, `alerts` and `tracking`. Keeps `items` and
 `areas`. For between demo runs.
@@ -160,10 +164,31 @@ then OpenRouter):
 Still to build:
 - `look_at_snapshot(item_id)` -> Nemotron 3.5 Super VL looks at the latest snapshot, to double-check
   a location or confirm a fall.
-- `send_carer_alert(message)` -> sends an iMessage/SMS through Photon (Spectrum TypeScript SDK) and
-  writes the row to `alerts`. One way only.
+- `send_carer_alert(type, message)` as an agent tool. The Python function exists already
+  (`backend/alerts.py`, see section 5); it isn't wired into the agent yet.
 
 ## 5. Alerts
+
+### Backend -> notifier (carer texts)
+`notifier/` is a small Bun + TypeScript service using Photon's Spectrum SDK (`spectrum-ts`, iMessage
+provider). It reads `SPECTRUM_PROJECT_ID`, `SPECTRUM_PROJECT_SECRET`, `CARER_PHONE` (E.164, e.g.
+`+15551234567`) and `NOTIFIER_PORT` (default 8100) from the repo-root `.env`. One way only.
+
+`POST http://127.0.0.1:{NOTIFIER_PORT}/alert`
+- Body: `{"type": "pills_missed", "message": "..."}`
+- Response: `200 {"ok": true}` once Photon accepts it (not a delivery receipt), or
+  `502 {"ok": false, "error": "..."}`; `400` for a bad body.
+
+Python: `backend/alerts.py`
+- `notify(type, message)` -> `(ok, error)`: calls the notifier only, never raises.
+- `send_carer_alert(type, message, item_id="")` -> `{"sent", "error", "ms"}`: calls the notifier
+  AND writes the alert with `record_alert` (channel `"carer"`, sent true/false).
+
+Photon free/pro plans use a shared line that only texts numbers that are BOTH added as **Users** in
+the Photon dashboard AND have texted the shared line first (any message). Until then sends fail
+with `PERMISSION_DENIED: Target not allowed for this project`. Business gives a dedicated line.
+
+### What raises alerts (not built yet)
 
 - **Spoken to the wearer** (through `GET /say`): reminders, e.g. around the usual pill time.
 - **Texted to the carer** (through Photon):
