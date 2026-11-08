@@ -102,10 +102,10 @@ This is a student project: there are no testimonials, press logos, or company cl
 
 ## The 3D device
 
-`src/components/DeviceModel.tsx` draws Nemo in 3D with three.js, built in code to the measurements of the team's CAD enclosure (`nemo.glb`): a 61 x 113 x 32 mm box with a 3 mm front plate, an 11 mm camera opening, a 30 x 15 mm screen window, a mic pinhole, two small eyelets and one coral button on the right side. It's turned so the screen sits above the camera, like the real device, with cleaner edges and a finished look (a muted slate blue body, lighter front plate, a metal trim around the camera, a dark display).
+`src/components/DeviceModel.tsx` draws Nemo in 3D with three.js, modelled in code from photos of the finished device: a 61 x 113 x 32 mm box in sparkly ivory filament. On the front, top to bottom: two mic holes (upper right), a round black camera and a small screen in a sloped frame. A USB-C cable comes out of the top. Both sides have two square snap-fit panels and a 2 x 2 vent, and the right side has the button. The back has a clip, a ribbed strip, two small holes showing the red status light, and two eyelets on the bottom edge.
 
 - Sizes and feature positions are at the top of `buildDevice()` at the bottom of the file. If the enclosure changes, update the numbers there.
-- What the screen shows is drawn in `drawScreen()`: a pair of eyes, as on the real device, which shows no text.
-- Colours are the constants at the top of the file (`BODY`, `PLATE`, `SEAM`, `LENS_GLASS`, `DISPLAY_BG`).
+- What the screen shows is drawn in `drawScreen()`: the same two cyan eyes and small mouth as the real display.
+- The sparkle is generated in `speckle()`. Colours are the constants at the top of the file (`IVORY`, `GROOVE`, `HOLLOW`, `PLUG`, `DISPLAY_BG`, `SCREEN_CYAN`).
 
 It sways slowly on its own, stays still under reduced motion, and can be dragged sideways to turn it. Vertical swipes still scroll the page on phones.
