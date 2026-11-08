@@ -1,4 +1,4 @@
-import { ClipVisual } from "@/components/ClipVisual";
+import { DeviceModel } from "@/components/DeviceModel";
 import { Reveal } from "@/components/Reveal";
 import { ThingIcon } from "@/components/ThingIcons";
 
@@ -33,12 +33,10 @@ export function Hero() {
         </Reveal>
 
         <Reveal delay={0.12} className="lg:col-span-5">
-          <figure className="rounded-2xl bg-navy/[0.06] p-4 sm:p-5">
-            <div className="flex items-center justify-center py-8 sm:py-10">
-              <ClipVisual className="h-64 w-auto sm:h-80" idPrefix="hero" />
-            </div>
+          <figure>
+            <DeviceModel className="h-72 sm:h-96" />
             {/* What it sounds like */}
-            <figcaption className="rounded-xl bg-cream p-5">
+            <figcaption className="rounded-xl p-5 ring-1 ring-inset ring-navy/15">
               <p className="text-base text-charcoal">
                 <span className="font-semibold text-navy">You:</span> &ldquo;Where are my keys?&rdquo;
               </p>

@@ -17,6 +17,8 @@ npm run dev
 
 Then open http://localhost:3000.
 
+Stop `npm run dev` before running `npm run build`. Building while the dev server runs breaks its cache; if that happens, delete `.next` and start the dev server again.
+
 Other scripts:
 
 ```bash
@@ -60,7 +62,7 @@ src/
     apple-icon.tsx       ← generated iOS home-screen icon
     opengraph-image.tsx  ← generated 1200×630 social image (twitter-image reuses it)
     api/waitlist/route.ts← placeholder waitlist handler (TODO)
-  components/            ← Logo, Header, ClipVisual, AskNemoDemo, FaqAccordion, WaitlistForm, Reveal…
+  components/            ← Logo, Header, DeviceModel (3D), AskNemoDemo, FaqAccordion, WaitlistForm, Reveal…
   sections/              ← one file per page section, top to bottom
 scripts/check-contrast.mjs
 ```
@@ -93,7 +95,17 @@ Search the code for `TODO` to find each one:
 - [ ] **Waitlist backend**: connect `src/app/api/waitlist/route.ts` to a real service, or set `NEXT_PUBLIC_WAITLIST_ENDPOINT`. Right now sign-ups are only logged, **not stored**.
 - [ ] **Contact email**: set `NEXT_PUBLIC_CONTACT_EMAIL` (the default `hello@nemo.example.com` is a placeholder).
 - [ ] **Domain**: set `NEXT_PUBLIC_SITE_URL`.
-- [ ] **Images**: replace the clip render (`src/components/ClipVisual.tsx`, used everywhere the device appears) with the 3D model or a product photo, the demo snapshots (`src/components/Scenes.tsx`), and the OG image with real photos and frames when you have them.
+- [ ] **Images**: the device is a 3D render (`src/components/DeviceModel.tsx`). Still to replace: the demo snapshots (`src/components/Scenes.tsx`) and the OG image, with real photos when you have them.
 - [ ] **Privacy and paired device**: confirm the privacy promises and the FAQ answer about the paired device match the final product.
 
 This is a student project: there are no testimonials, press logos, or company claims on the site, so please keep it that way.
+
+## The 3D device
+
+`src/components/DeviceModel.tsx` draws Nemo in 3D with three.js, built in code to the measurements of the team's CAD enclosure (`nemo.glb`): a 61 x 113 x 32 mm box with a 3 mm front plate, an 11 mm camera opening, a 30 x 15 mm screen window, a mic pinhole, two small eyelets and one coral button on the right side. It's turned so the screen sits above the camera, like the real device, with cleaner edges and a finished look (a muted slate blue body, lighter front plate, a metal trim around the camera, a dark display).
+
+- Sizes and feature positions are at the top of `buildDevice()` at the bottom of the file. If the enclosure changes, update the numbers there.
+- What the screen shows is drawn in `drawScreen()` (currently the answer to "Where are my keys?").
+- Colours are the constants at the top of the file (`BODY`, `PLATE`, `SEAM`, `LENS_GLASS`, `DISPLAY_BG`).
+
+It sways slowly on its own, stays still under reduced motion, and can be dragged sideways to turn it. Vertical swipes still scroll the page on phones.
