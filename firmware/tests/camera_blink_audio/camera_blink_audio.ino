@@ -1,27 +1,26 @@
-// camera_blink_audio - camera_blink (camera + eyes) PLUS laptop-controlled audio.
+// camera_blink_audio - camera + eyes + laptop-controlled audio + BOOT-button push-to-talk.
 //
-// Everything from camera_blink is unchanged: camera served at /jpg, and the
-// blinking-eyes face on the OLED. Added on top, controlled from the laptop over
-// the same Wi-Fi:
-//   GET  /rec/start   -> start recording the mic
-//   GET  /rec/stop    -> stop, returns the recording as a 16 kHz mono WAV
-//   POST /play        -> play an uploaded WAV on the speaker (the spoken reply)
-//   GET  /play_last   -> play the last recording back (mic+speaker echo test)
+// Unchanged from before: camera at /jpg, blinking-eyes OLED, and the laptop audio
+// endpoints (/rec/start, /rec/stop, /play, /play_last) driven by talk.py.
 //
-// The idea: laptop records a question ("where are my glasses?"), some other program
-// (not built here) turns it into speech-to-text + an answer WAV, then POSTs that WAV
-// to /play so Nemo speaks it. This sketch is only the mic-in and speaker-out plumbing.
-// Drive it from firmware/tests/talk.py.
+// NEW (additive, nothing else changed): the BOOT button (GPIO0) is a record button.
+//   - Press and hold:   start recording the mic (debounced).
+//   - Release (or 15 s): stop, POST the WAV to the backend's /ask, play the reply.
+//   - If /ask is not set/reachable yet: fall back to playing your recording back
+//     (the echo), so the button works before the backend exists.
+// The button and the keyboard both just set the same 'recording' flag, so either
+// one works; they share the same capture loop.
 //
-// Audio uses the same proven calls as the micSpeaker test: PDM mic on 38/39, MAX98357
-// speaker on 45/46/42, two separate I2S instances. Mic is read a small chunk at a time
-// in loop() ONLY while recording, so the camera and eyes are untouched when idle.
+// BOOT/GPIO0 note: GPIO0 is only read while the sketch RUNS. It is still the normal
+// flash pin at reset, so this changes nothing about uploading. Just don't press BOOT
+// while the board is powering on (that enters flash mode); a press while running records.
 //
 // IMPORTANT: this repo is public. Do NOT commit real hotspot credentials.
 
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <WebServer.h>
+#include <HTTPClient.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -29,6 +28,10 @@
 
 const char* SSID = "YOUR_HOTSPOT_NAME";
 const char* PASS = "YOUR_PASSWORD";
+
+// When the backend /ask is ready, set this to its address, e.g. "http://172.20.10.5:8000/ask".
+// Leave it empty ("") to just echo your recording on the speaker (works with no backend).
+const char* BACKEND_ASK_URL = "";
 
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM -1
@@ -55,7 +58,11 @@ const char* PASS = "YOUR_PASSWORD";
 #define SPK_DOUT 42
 #define SAMPLE_RATE 16000
 #define MAX_REC_SECONDS 15
-#define ECHO_GAIN 8          // volume boost for the /play_last echo (mic is quiet)
+#define ECHO_GAIN 8          // volume boost for the echo (mic is quiet)
+
+// ---- BOOT button ----
+#define BOOT_BTN 0           // GPIO0 = BOOT button, LOW when pressed
+#define BTN_DEBOUNCE_MS 30
 
 Adafruit_SSD1306 oled(128, 64, &Wire, -1);
 WebServer server(80);
@@ -66,12 +73,17 @@ unsigned long bootMs = 0;
 int shownEye = -1;
 unsigned long nextBlinkMs = 0, blinkUntilMs = 0;
 
-// audio state (new)
+// audio state (unchanged)
 I2SClass i2sMic;
 I2SClass i2sSpk;
 uint8_t *recBuf = nullptr;  size_t recCap = 0;  volatile size_t recLen = 0;
 volatile bool recording = false;
 uint8_t *playBuf = nullptr; size_t playCap = 0;  size_t playLen = 0;
+
+// button state (new)
+int btnState = HIGH, btnLastReading = HIGH;
+unsigned long btnDebounceMs = 0, recStartMs = 0;
+bool btnRecording = false, btnLatched = false;
 
 // ---------- camera (unchanged) ----------
 void handleJpg() {
@@ -109,7 +121,7 @@ void updateFace() {
   if (want != shownEye) { drawFace(want == 1); shownEye = want; }
 }
 
-// ---------- audio (new) ----------
+// ---------- audio (unchanged endpoints) ----------
 void writeWavHeader(uint8_t* h, uint32_t dataBytes) {
   uint32_t sr = SAMPLE_RATE, byteRate = SAMPLE_RATE * 2, chunk = 36 + dataBytes, sub1 = 16;
   uint16_t ch = 1, fmt = 1, blockAlign = 2, bits = 16;
@@ -119,9 +131,7 @@ void writeWavHeader(uint8_t* h, uint32_t dataBytes) {
   memcpy(h + 32, &blockAlign, 2); memcpy(h + 34, &bits, 2);
   memcpy(h + 36, "data", 4); memcpy(h + 40, &dataBytes, 4);
 }
-
 void handleRecStart() { if (!recording) { recLen = 0; recording = true; } server.send(200, "text/plain", "rec"); }
-
 void handleRecStop() {
   recording = false;
   uint8_t hdr[44]; writeWavHeader(hdr, recLen);
@@ -132,7 +142,6 @@ void handleRecStop() {
   size_t sent = 0;
   while (sent < recLen) { size_t n = (recLen - sent > 1460) ? 1460 : (recLen - sent); c.write(recBuf + sent, n); sent += n; }
 }
-
 void handlePlayUpload() {
   HTTPUpload& up = server.upload();
   if (up.status == UPLOAD_FILE_START) playLen = 0;
@@ -141,10 +150,9 @@ void handlePlayUpload() {
   }
 }
 void handlePlay() {
-  if (playLen > 44) i2sSpk.playWAV(playBuf, playLen);   // laptop sends a full WAV
+  if (playLen > 44) i2sSpk.playWAV(playBuf, playLen);
   server.send(200, "text/plain", "played");
 }
-
 void handlePlayLast() {
   if (recLen < 2 || 44 + recLen > playCap) { server.send(200, "text/plain", "nothing to play"); return; }
   writeWavHeader(playBuf, recLen);
@@ -155,11 +163,81 @@ void handlePlayLast() {
   server.send(200, "text/plain", "played");
 }
 
+// ---------- BOOT button push-to-talk (new) ----------
+void echoLocally() {
+  int16_t* s = (int16_t*)(playBuf + 44); size_t n = recLen / 2;
+  for (size_t i = 0; i < n; i++) { int32_t v = (int32_t)s[i] * ECHO_GAIN; if (v > 32767) v = 32767; if (v < -32768) v = -32768; s[i] = (int16_t)v; }
+  i2sSpk.playWAV(playBuf, 44 + recLen);
+}
+
+// POST the recorded WAV to the backend /ask and play the WAV it returns.
+// Returns false if not configured or anything fails, so the caller can echo instead.
+bool postAskAndPlay(uint8_t* wav, size_t wavLen) {
+  if (BACKEND_ASK_URL[0] == '\0') return false;
+  HTTPClient http;
+  if (!http.begin(BACKEND_ASK_URL)) return false;
+  http.addHeader("Content-Type", "audio/wav");
+  http.setTimeout(10000);
+  int code = http.POST(wav, wavLen);
+  bool ok = false;
+  if (code == 200) {
+    WiFiClient* st = http.getStreamPtr();
+    int len = http.getSize();          // -1 if unknown/chunked
+    size_t got = 0; unsigned long t0 = millis();
+    while ((len < 0 || got < (size_t)len) && (millis() - t0 < 10000)) {
+      size_t avail = st->available();
+      if (avail) {
+        if (got + avail > recCap) avail = recCap - got;      // reuse recBuf for the reply
+        int r = st->readBytes((char*)(recBuf + got), avail);
+        if (r > 0) { got += r; t0 = millis(); }
+        if (got >= recCap) break;
+      } else {
+        if (!http.connected() && st->available() == 0) break;
+        delay(2);
+      }
+    }
+    if (got > 44) { i2sSpk.playWAV(recBuf, got); ok = true; }
+  }
+  http.end();
+  return ok;
+}
+
+// Called when a button recording ends (release or 15 s). Builds the WAV, tries /ask, else echoes.
+void processButtonRecording() {
+  if (recLen < 2 || 44 + recLen > playCap) return;
+  writeWavHeader(playBuf, recLen);
+  memcpy(playBuf + 44, recBuf, recLen);
+  size_t wavLen = 44 + recLen;
+  if (!postAskAndPlay(playBuf, wavLen)) echoLocally();      // playBuf still holds the request for the echo
+}
+
+void pollButton() {
+  unsigned long now = millis();
+  int reading = digitalRead(BOOT_BTN);
+  if (reading != btnLastReading) { btnDebounceMs = now; btnLastReading = reading; }
+  if ((now - btnDebounceMs) > BTN_DEBOUNCE_MS && reading != btnState) {
+    btnState = reading;
+    if (btnState == LOW && !btnLatched) {           // pressed -> start
+      recLen = 0; recording = true; btnRecording = true; recStartMs = now;
+    } else if (btnState == HIGH) {                   // released
+      btnLatched = false;
+      if (btnRecording) { recording = false; btnRecording = false; processButtonRecording(); }
+    }
+  }
+  // 15 s / buffer-full cap while still held: stop, process, wait for physical release
+  if (btnRecording && ((now - recStartMs) > (unsigned long)MAX_REC_SECONDS * 1000UL || recLen >= recCap)) {
+    recording = false; btnRecording = false; btnLatched = true;
+    processButtonRecording();
+  }
+}
+
 void setup() {
   Wire.begin(43, 44);
   oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   oled.clearDisplay(); oled.setTextSize(1); oled.setTextColor(SSD1306_WHITE);
   oled.setCursor(0, 0); oled.println("Starting WiFi..."); oled.display();
+
+  pinMode(BOOT_BTN, INPUT_PULLUP);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(SSID, PASS);
@@ -199,7 +277,7 @@ void setup() {
   config.fb_count = 2;
   esp_camera_init(&config);
 
-  // audio buffers + I2S (new) - two separate instances, both running
+  // audio buffers + I2S (unchanged)
   recCap = (size_t)MAX_REC_SECONDS * SAMPLE_RATE * 2;
   recBuf  = (uint8_t*)ps_malloc(recCap);
   playCap = recCap + 44;
@@ -229,6 +307,7 @@ void setup() {
 void loop() {
   server.handleClient();
   updateFace();
+  pollButton();
   // capture mic only while recording; camera/eyes untouched when idle
   if (recording && recLen < recCap) {
     size_t want = recCap - recLen; if (want > 640) want = 640;   // ~20 ms chunk
