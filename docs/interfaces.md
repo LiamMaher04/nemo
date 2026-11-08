@@ -38,6 +38,41 @@ Both go through the same handler (`backend/frames.py`):
 - `area_id` is `""` (and `area_conf` low) when DINOv2 can't tell the area from its reference
   photos (`REFS_DIR`); see `backend/vision/README.md`.
 
+### Where vision runs (`VISION_URL` in `.env`)
+- Blank (the default, and the fallback): `backend.vision.process()` runs on the laptop, as above.
+- Set (e.g. `http://localhost:8001`): `frames.py` doesn't load YOLOE or DINOv2. It POSTs each frame
+  to `{VISION_URL}/process` (`backend/vision_server.py`, normally on a Brev GPU box through
+  `brev port-forward`; setup in `docs/brev.md`) and rebuilds the same `VisionResult` from the
+  reply, so Spacetime, the saved frames, `/live` and Super VL work unchanged. `result.ms` is the
+  round trip; each frame logs `vision N ms (server N ms, network N ms)`.
+- Timeout 3 s. A frame that errors or times out is skipped (`stats.remote_errors`), with one
+  warning line at most every 30 s. No switching back mid-run: blank `VISION_URL` and restart.
+- At startup the backend calls the server's `/health` once and logs what it found.
+- On Windows prefer `127.0.0.1` to `localhost` in `VISION_URL`: `localhost` tries IPv6 first and
+  costs about 2 s each time a connection is reopened.
+- `GET /health` on the backend shows `vision.mode` (`local` | `remote`) and `vision.url`.
+
+### Vision server (`backend/vision_server.py`)
+Runs Josie's pipeline on its own, with the vision settings from its own repo-root `.env` (they
+must match the laptop's). No API keys. Loads YOLOE, DINOv2 and the reference fingerprints once at
+startup, on CUDA if there is one. One frame at a time (the gate and area vote keep state).
+`uvicorn backend.vision_server:app --host 127.0.0.1 --port 8001`
+
+`POST /process`
+- Body: raw JPEG. Headers: `X-Frame-Id` (int), `X-Frame-Ts` (UTC ms, float). Both required.
+- Response `200`: every `VisionResult` field as JSON: `kept`, `drop_reason`, `sharpness`,
+  `sightings` (14 keys each, `add_sighting` order, with `thumb_b64`), `frame` (`add_frame` order,
+  or `null`), `furniture_boxes` (`[name, wording, [x, y, w, h], conf]`), `matched_by`, `ms`
+  (time in `process()`), `yoloe_ms`, `dino_ms`, `area` (the `AreaMatch` fields, or `null`), plus
+  `server_ms` (the whole request as the server saw it). `400` for a non-JPEG body or missing
+  headers, `503` if the models didn't load.
+
+`GET /health`
+- `ok`, `loaded`, `error`, `load_s`, `device` (YOLOE: `cuda` | `mps` | `cpu`), `dino_device`,
+  `cuda`, `gpu` (name or `null`), `refs_dir`, `area_refs` and `item_refs` (photos per folder), and
+  `settings` (`SHARPNESS_GATE`, `DETECT_CONF`, `DETECT_IMGSZ`, `DETECTOR_WEIGHTS`, `DINO_MODEL`) to
+  check against the laptop's.
+
 ### POST /ask
 - The wearer holds the button and asks out loud. The device records while the button is held.
 - Body: raw audio. `audio/wav`, 16 kHz, mono, 16-bit PCM. (Other rates or stereo are converted.)

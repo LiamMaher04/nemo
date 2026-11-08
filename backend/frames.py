@@ -29,7 +29,71 @@ answering = threading.Event()
 _vision_ms: deque[float] = deque(maxlen=20)  # process() time of the last 20 processed frames
 history: deque[dict] = deque(maxlen=200)  # per processed frame: frame_id, kept, vision_ms, spacetime_ms
 _next_frame_id = 0
-stats = {"processed": 0, "kept": 0, "dropped": 0, "skipped_busy": 0, "spacetime_errors": 0}
+stats = {"processed": 0, "kept": 0, "dropped": 0, "skipped_busy": 0, "spacetime_errors": 0, "remote_errors": 0}
+
+# Remote vision (VISION_URL set): backend/vision_server.py on a GPU box does process() instead of
+# this laptop. A frame it doesn't answer in time is skipped; there's no switching back mid-run.
+REMOTE_TIMEOUT_S = 3.0
+REMOTE_WARN_EVERY_S = 30.0  # at most one warning line this often, with a count of what was skipped
+_remote_client: httpx.Client | None = None
+_remote_fails = 0
+_remote_warned_at = 0.0
+
+
+def vision_mode() -> dict[str, str]:
+    """Which mode vision is in, for /health."""
+    if settings.VISION_URL:
+        return {"mode": "remote", "url": settings.VISION_URL}
+    return {"mode": "local", "url": ""}
+
+
+def _remote_failed(frame_id: int, why: str) -> None:
+    """Count a skipped frame; log one warning line at most every REMOTE_WARN_EVERY_S."""
+    global _remote_fails, _remote_warned_at
+    stats["remote_errors"] += 1
+    _remote_fails += 1
+    now = time.monotonic()
+    if now - _remote_warned_at >= REMOTE_WARN_EVERY_S:
+        log.warning("vision server %s didn't answer frame %d (%s); skipped %d frame(s) since the last warning",
+                    settings.VISION_URL, frame_id, why, _remote_fails)
+        _remote_warned_at, _remote_fails = now, 0
+
+
+def _remote_process(jpeg: bytes, frame_id: int, ts_ms: float) -> tuple[Any, float, float] | None:
+    """POST the JPEG to {VISION_URL}/process and rebuild Josie's VisionResult from the JSON.
+
+    Returns (result, round_trip_ms, server_ms), or None if the server failed or was too slow.
+    result.ms becomes the round trip, since that's what the frame loop actually waited.
+    """
+    global _remote_client
+    from backend.vision.areas import AreaMatch  # plain dataclasses: importing loads no model
+    from backend.vision.pipeline import VisionResult
+
+    if _remote_client is None:
+        _remote_client = httpx.Client(timeout=REMOTE_TIMEOUT_S)
+    started = time.perf_counter()
+    try:
+        r = _remote_client.post(f"{settings.VISION_URL}/process", content=jpeg,
+                                headers={"Content-Type": "image/jpeg", "X-Frame-Id": str(frame_id),
+                                         "X-Frame-Ts": repr(ts_ms)})
+        r.raise_for_status()
+        d = r.json()
+        result = VisionResult(
+            kept=d["kept"], drop_reason=d["drop_reason"], sharpness=d["sharpness"],
+            sightings=d["sightings"], frame=d["frame"],
+            furniture_boxes=[tuple(t) for t in d["furniture_boxes"]], matched_by=d["matched_by"],
+            ms=d["ms"], area=AreaMatch(**d["area"]) if d.get("area") else None,
+            yoloe_ms=d["yoloe_ms"], dino_ms=d["dino_ms"],
+        )
+    except httpx.TimeoutException:
+        _remote_failed(frame_id, f"timed out after {REMOTE_TIMEOUT_S:g} s")
+        return None
+    except Exception as exc:
+        _remote_failed(frame_id, f"{type(exc).__name__}: {exc}")
+        return None
+    round_trip_ms = (time.perf_counter() - started) * 1000
+    result.ms = round_trip_ms
+    return result, round_trip_ms, float(d.get("server_ms", d["ms"]))
 
 # What the live page shows: the latest processed frame (kept or dropped) and exactly what vision
 # returned for it. Boxes are full-frame pixels straight from YOLOE; the area is DINOv2's vote.
@@ -132,8 +196,28 @@ def avg_vision_ms() -> float | None:
 
 
 def warm_up() -> None:
-    """Load YOLOE once at startup, holding the busy lock so frames during loading are skipped."""
+    """Load YOLOE once at startup, holding the busy lock so frames during loading are skipped.
+
+    With VISION_URL set nothing is loaded here: it checks the vision server once and logs what
+    it found. Frames are sent to it either way; any it can't answer are skipped.
+    """
     global _next_frame_id
+    if settings.VISION_URL:
+        _next_frame_id = _first_frame_id()
+        # Import the result classes now (it pulls in torch, a few seconds, but loads no model),
+        # so the first frame isn't slow.
+        from backend.vision.areas import AreaMatch  # noqa: F401
+        from backend.vision.pipeline import VisionResult  # noqa: F401
+        try:
+            h = httpx.get(f"{settings.VISION_URL}/health", timeout=5.0).json()
+            log.info("vision is REMOTE at %s: loaded=%s on %s%s, %d area and %d item reference folders "
+                     "(next frame_id %d)", settings.VISION_URL, h.get("loaded"), h.get("device"),
+                     f" ({h['gpu']})" if h.get("gpu") else "", len(h.get("area_refs", {})),
+                     len(h.get("item_refs", {})), _next_frame_id)
+        except Exception as exc:
+            log.warning("vision is REMOTE at %s but its /health didn't answer (%s): frames are skipped "
+                        "until it does. Blank VISION_URL and restart to run vision here.", settings.VISION_URL, exc)
+        return
     with _busy:
         started = time.perf_counter()
         from backend.vision import detector
@@ -152,8 +236,6 @@ def handle(jpeg: bytes) -> dict[str, Any]:
         stats["skipped_busy"] += 1
         return {"skipped": "busy"}
     try:
-        from backend.vision import process
-
         started = time.perf_counter()
         if _next_frame_id == 0:
             _next_frame_id = _first_frame_id()
@@ -161,7 +243,17 @@ def handle(jpeg: bytes) -> dict[str, Any]:
         _next_frame_id += 1
         ts_ms = time.time() * 1000
 
-        result = process(jpeg, frame_id, ts_ms)
+        if settings.VISION_URL:
+            got = _remote_process(jpeg, frame_id, ts_ms)
+            if got is None:
+                return {"frame_id": frame_id, "skipped": "vision server"}
+            result, round_trip_ms, server_ms = got
+            timing = (f"vision {round_trip_ms:.0f} ms (server {server_ms:.0f} ms, "
+                      f"network {max(0.0, round_trip_ms - server_ms):.0f} ms)")
+        else:
+            from backend.vision import process
+            result = process(jpeg, frame_id, ts_ms)
+            timing = f"vision {result.ms:.0f} ms"
         vision_ms = result.ms
         _vision_ms.append(vision_ms)
         stats["processed"] += 1
@@ -174,7 +266,7 @@ def handle(jpeg: bytes) -> dict[str, Any]:
                 _publish_latest(frame_id, ts_ms, jpeg, result, 0.0)
             except Exception as exc:  # the live view must never take the pipeline down
                 log.warning("live view snapshot failed: %s", exc)
-            log.info("frame %d dropped (%s): vision %.0f ms", frame_id, result.drop_reason, vision_ms)
+            log.info("frame %d dropped (%s): %s", frame_id, result.drop_reason, timing)
             return {"frame_id": frame_id, "kept": False, "reason": result.drop_reason}
 
         stats["kept"] += 1
@@ -210,8 +302,8 @@ def handle(jpeg: bytes) -> dict[str, Any]:
             log.warning("super vl hook failed: %s", exc)
 
         seen = ", ".join(f"{s['item_id'] or '?'}@{s['furniture'] or '-'}" for s in result.sightings) or "nothing"
-        log.info("frame %d kept: %s | vision %.0f ms, spacetime %.0f ms, total %.0f ms",
-                 frame_id, seen, vision_ms, spacetime_ms, (time.perf_counter() - started) * 1000)
+        log.info("frame %d kept: %s | %s, spacetime %.0f ms, total %.0f ms",
+                 frame_id, seen, timing, spacetime_ms, (time.perf_counter() - started) * 1000)
         return {"frame_id": frame_id, "kept": True, "sightings": len(result.sightings)}
     except Exception as exc:  # a bad frame must never take the loop down
         log.exception("frame failed")

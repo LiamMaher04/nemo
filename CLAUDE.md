@@ -56,6 +56,8 @@ Nemo device (ESP32-S3 camera, Arduino; firmware/tests/camera_blink_audio)
   v
 backend/ (Python, FastAPI, on the laptop)
   drop blurry and near-duplicate frames -> YOLOE (items + furniture) -> DINOv2 (area, look-alikes)
+  |   (on the laptop by default; with VISION_URL set, this one step runs in
+  |    backend/vision_server.py on a Brev GPU box instead, laptop as the fallback: docs/brev.md)
   | HTTP: add_sighting per item seen, then add_frame once per kept frame
   | backend/vl.py: Super VL in one background worker (second opinions, spot descriptions,
   |   indoors check). Never on the frame loop or the question path.
@@ -71,6 +73,11 @@ agent (Nemotron Lightning + tools) -> spoken answers and reminders on Nemo
 
 - **Local first.** The demo runs on the laptop on the same phone hotspot as the device. Every URL is
   a setting in `.env` (device firmware: a #define in `secrets.h`), never hardcoded.
+- **Vision on Brev (optional).** `VISION_URL` blank = vision on the laptop, exactly as before.
+  Set (`http://localhost:8001` through `brev port-forward`) = the laptop still fetches frames from
+  Nemo but sends each one to `backend/vision_server.py` on a Brev GPU and gets the same result
+  back. Nothing else moves. A slow or failed frame is skipped, never re-run locally; switching
+  back is blanking `VISION_URL` and restarting. Steps: `docs/brev.md`.
 - The ESP32 is 2.4 GHz only and can't join eduroam or captive-portal Wi-Fi. Use a phone hotspot
   (iPhone: turn on Maximise Compatibility).
 

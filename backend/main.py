@@ -93,7 +93,7 @@ def health() -> dict:
         "seconds_since_last_frame": round(now - last_frame_at, 1) if last_frame_at else None,
         "last_device_id": last_device_id,
         "frame_source": settings.FRAME_SOURCE,
-        "vision": {**frames.stats, "avg_vision_ms_last_20": frames.avg_vision_ms()},
+        "vision": {**frames.vision_mode(), **frames.stats, "avg_vision_ms_last_20": frames.avg_vision_ms()},
     }
 
 
