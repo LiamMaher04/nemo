@@ -97,14 +97,14 @@ def main() -> None:
     st.call("reset_memory")
     print("reset_memory: done")
 
-    # (a) Remote seen twice on the couch.
-    sight("tv_remote", "couch", "sofa")
-    sight("tv_remote", "couch", "sofa")
-    show("(a) remote seen twice on the couch -> placed at couch")
+    # (a) Remote seen twice on the sofa.
+    sight("tv_remote", "sofa", "sofa")
+    sight("tv_remote", "sofa", "sofa")
+    show("(a) remote seen twice on the sofa -> placed at sofa")
 
     # (b) One stray sighting on the desk: not enough to change anything.
     sight("tv_remote", "desk", "desk")
-    show("(b) one stray sighting on the desk -> still at couch, no event")
+    show("(b) one stray sighting on the desk -> still at sofa, no event")
 
     # (c) Seen twice on the desk.
     sight("tv_remote", "desk", "desk")

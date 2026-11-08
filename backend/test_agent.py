@@ -26,10 +26,10 @@ def seed_placements() -> None:
     st.call("reset_memory")
     now_ms = time.time() * 1000
 
-    # Glasses on bed 1's bedside table, about 2 hours ago.
+    # Glasses on the bedside table, about 2 hours ago.
     tm.clock_ms = now_ms - 2 * 3600 * 1000
-    tm.sight("reading_glasses", "bed_1", "bedside table", label="eyeglasses")
-    tm.sight("reading_glasses", "bed_1", "bedside table", label="eyeglasses")
+    tm.sight("reading_glasses", "bedside_table", "bedside table", label="eyeglasses")
+    tm.sight("reading_glasses", "bedside_table", "bedside table", label="eyeglasses")
 
     # Pill box on the desk; missing in a sharp desk frame; back on the desk. About 1 hour ago.
     tm.clock_ms = now_ms - 60 * 60 * 1000
@@ -38,10 +38,10 @@ def seed_placements() -> None:
     tm.frame("desk", ["desk"], [], tm.SHARP)
     tm.sight("pill_box", "desk", "desk")
 
-    # Remote on the couch, about 20 minutes ago.
+    # Remote on the sofa, about 20 minutes ago.
     tm.clock_ms = now_ms - 20 * 60 * 1000
-    tm.sight("tv_remote", "couch", "sofa")
-    tm.sight("tv_remote", "couch", "sofa")
+    tm.sight("tv_remote", "sofa", "sofa")
+    tm.sight("tv_remote", "sofa", "sofa")
 
     for s in st.sql("SELECT * FROM item_state"):
         mins = round((now_ms - s["last_seen_ts_ms"]) / 60000)

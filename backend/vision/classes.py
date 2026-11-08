@@ -47,6 +47,12 @@ ITEMS: dict[str, list[str]] = {
         "plastic pill box with small lids",
         "seven day pill box",
     ],
+    "toothbrush": [
+        "toothbrush",
+        "electric toothbrush",
+        "electric toothbrush standing upright",
+        "toothbrush lying on a counter",
+    ],
 }
 
 # Fixed furniture name -> wordings. Spacetime compares furniture names across frames, so

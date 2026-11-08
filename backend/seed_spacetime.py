@@ -59,19 +59,26 @@ ITEMS = [
         "aliases": ["pills", "pill organiser", "pill organizer", "medicine", "tablets"],
         "attributes": {"detector_prompt": "pill organizer box", "size": "small", "reminders": True},
     },
+    {
+        "item_id": "toothbrush",
+        "name": "toothbrush",
+        "category": "toothbrush",
+        "importance": 1,
+        "aliases": ["tooth brush", "electric toothbrush"],
+        "attributes": {"detector_prompt": "toothbrush", "size": "small"},
+    },
 ]
 
-# Every hotel area is in the hotel room; the demo table is in the demo room.
+# Hotel set (room "hotel room"): the hotel room, for filming the demo video.
+# Venue set (room "venue"): the judging table at HackUTD; demo_table is a placeholder, more to come.
 AREAS = [
-    ("couch", "couch", "hotel room"),
+    ("sofa", "sofa", "hotel room"),
     ("desk", "desk", "hotel room"),
-    ("bed_1", "bed 1", "hotel room"),
-    ("bed_2", "bed 2", "hotel room"),
-    ("tv_area", "TV area", "hotel room"),
-    ("cupboard_corner", "cupboard corner", "hotel room"),
-    ("closet", "closet", "hotel room"),
+    ("fridge", "fridge", "hotel room"),
+    ("tv_unit", "TV", "hotel room"),
+    ("bedside_table", "bedside table", "hotel room"),
     ("bathroom", "bathroom", "hotel room"),
-    ("demo_table", "demo table", "demo room"),
+    ("demo_table", "demo table", "venue"),
 ]
 
 
