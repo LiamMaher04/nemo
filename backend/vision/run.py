@@ -88,6 +88,8 @@ def draw(jpeg_bytes: bytes, result: VisionResult) -> np.ndarray:
         cv2.rectangle(img, (x, y), (x + w, y + h), colour, 2)
         cv2.putText(img, text, (x, max(y - 6, 14)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, colour, 2)
     status = f"sharpness {result.sharpness:.0f}" + ("" if result.kept else f"  DROPPED: {result.drop_reason}")
+    if result.area and result.area.window:
+        status += f"  area {result.area.area_id or '-'} {result.area.area_conf:.2f}"
     cv2.putText(img, status, (10, img.shape[0] - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
     scale = min(1.0, 1280 / img.shape[1])
     return cv2.resize(img, None, fx=scale, fy=scale) if scale < 1 else img
@@ -109,7 +111,7 @@ def check_save_dir(save_dir: Path) -> Path:
 def save_frame(save_dir: Path, run_stamp: str, frame_id: int, jpeg_bytes: bytes) -> Path:
     """Save a kept frame, faces blurred first (nothing is stored with faces in it)."""
     bgr = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
-    blurred = pipeline._blur_faces(bgr, cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY))
+    blurred = pipeline.blur_faces(bgr, cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY))
     path = save_dir / f"{run_stamp}_{frame_id:06d}.jpg"
     cv2.imwrite(str(path), blurred, [cv2.IMWRITE_JPEG_QUALITY, 95])
     return path
@@ -128,8 +130,8 @@ def main() -> None:
     save_dir = check_save_dir(args.save) if args.save else None
     run_stamp = time.strftime("%Y%m%d-%H%M%S")
 
-    print(f"loading YOLOE on {detector.pick_device()} ...", flush=True)
-    print(f"model ready in {detector.load():.1f}s", flush=True)
+    print(f"loading YOLOE and DINOv2 on {detector.pick_device()} ...", flush=True)
+    pipeline.load()
 
     if args.folder:
         source = frames_from_folder(args.folder)
@@ -144,8 +146,12 @@ def main() -> None:
             ts_ms = time.time() * 1000  # UTC ms since epoch
             result = process(jpeg_bytes, frame_id, ts_ms)
             if result.kept:
-                print(f"#{frame_id} sharpness {result.sharpness:.1f} KEPT "
-                      f"{len(result.sightings)} sightings {result.ms:.0f} ms", flush=True)
+                print(f"#{frame_id} sharpness {result.sharpness:.1f} KEPT {len(result.sightings)} sightings "
+                      f"{result.ms:.0f} ms (YOLOE {result.yoloe_ms:.0f}, DINOv2 {result.dino_ms:.0f})", flush=True)
+                if result.area and result.area.window:
+                    a = result.area
+                    print(f"  area     {a.area_id or '-'} conf {a.area_conf:.2f} over {a.window} frames | "
+                          f"this frame: best {a.best} {a.best_sim:.3f}, next {a.next_sim:.3f}, vote {a.vote or 'none'}")
                 for s in result.sightings:
                     print(f"  sighting {short(s)}")
                 print(f"  frame    {short(result.frame or {})}", flush=True)

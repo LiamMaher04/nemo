@@ -9,7 +9,8 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from backend.vision import classes, detector, gate
+from backend.vision import areas, classes, detector, dino, gate, item_match
+from backend.vision.areas import AreaMatch
 from backend.vision.detector import Box
 
 THUMB_WIDTH = 160
@@ -17,6 +18,9 @@ THUMB_PAD = 0.2  # padding around the item box, as a fraction of its width and h
 THUMB_JPEG_QUALITY = 80
 FACE_SEARCH_WIDTH = 640  # the face cascade runs on a copy this wide
 FACE_GROW = 0.2  # widen each face box by this fraction on every side before blurring
+ITEM_CROP_PAD = 0.1  # padding around the item box for its DINOv2 crop
+
+_loaded = False
 
 # Importing ultralytics turns OpenCV threading off, which makes the face cascade about 4x
 # slower. Turn it back on (we don't use PyTorch DataLoaders, the reason ultralytics does it).
@@ -34,6 +38,9 @@ class VisionResult:
     frame: dict | None = None  # add_frame order, 7 keys; None if dropped
     furniture_boxes: list[tuple[str, list[int], float]] = field(default_factory=list)  # for drawing
     ms: float = 0.0  # time spent in process()
+    area: AreaMatch | None = None  # this frame's area vote and scores, for printing
+    yoloe_ms: float = 0.0
+    dino_ms: float = 0.0
 
 
 def _dumps(value: object) -> str:
@@ -102,8 +109,11 @@ def _match_furniture(item: Box, furniture: list[Box], frame_w: int) -> tuple[str
     return best.name, _dumps([round(rx, 3), round(ry, 3)])
 
 
-def _blur_faces(bgr: np.ndarray, grey: np.ndarray) -> np.ndarray:
+def blur_faces(bgr: np.ndarray, grey: np.ndarray) -> np.ndarray:
     """Copy of the frame with every face the Haar cascade finds blurred out.
+
+    All face blurring goes through this one function (thumbnails and --save), so the face
+    detector can be swapped (YuNet is next) without touching anything else.
 
     The cascade runs on a copy at most FACE_SEARCH_WIDTH wide (much faster), and each face box
     is widened by FACE_GROW, because Haar boxes leave the chin and hairline showing.
@@ -140,8 +150,44 @@ def _xywh(xyxy: tuple[float, float, float, float]) -> list[int]:
     return [round(x1), round(y1), round(x2 - x1), round(y2 - y1)]
 
 
+def load() -> None:
+    """Load YOLOE, and DINOv2 plus its reference fingerprints. Once; process() calls it too."""
+    global _loaded
+    if _loaded:
+        return
+    t = time.perf_counter()
+    detector.load()
+    print(f"YOLOE ready in {time.perf_counter() - t:.1f}s", flush=True)
+    t = time.perf_counter()
+    dino.load()
+    areas.load_refs()
+    item_match.load_refs()
+    print(f"DINOv2 and references ready in {time.perf_counter() - t:.1f}s", flush=True)
+    _loaded = True
+
+
+def _crop(bgr: np.ndarray, xyxy: tuple[float, float, float, float], pad: float) -> np.ndarray:
+    h, w = bgr.shape[:2]
+    x1, y1, x2, y2 = xyxy
+    px, py = (x2 - x1) * pad, (y2 - y1) * pad
+    return bgr[max(int(y1 - py), 0) : min(int(y2 + py), h), max(int(x1 - px), 0) : min(int(x2 + px), w)]
+
+
+def _identify(group: list[Box], crop_fp: np.ndarray | None) -> tuple[str, list[list], float]:
+    """(item_id, candidates, match_margin) for one object (a group of overlapping item boxes)."""
+    if crop_fp is not None:  # DINOv2 decides
+        ranked = item_match.rank(crop_fp)
+        item_id, margin = item_match.decide(ranked)
+        return item_id, [[i, round(sim, 4)] for i, sim in ranked[:3]], margin
+    candidates = [[b.name, round(b.conf, 4)] for b in group]
+    if len(group) == 1:
+        return group[0].name, candidates, 1.0  # no references: the YOLOE wording decides
+    return "", candidates, group[0].conf - group[1].conf  # different items, same box
+
+
 def process(jpeg_bytes: bytes, frame_id: int, ts_ms: float) -> VisionResult:
-    """Gate one frame, run YOLOE on it if kept, and build the add_sighting and add_frame reports."""
+    """Gate one frame, run YOLOE and DINOv2 on it if kept, and build the add_sighting and add_frame reports."""
+    load()
     start = time.perf_counter()
 
     def done(result: VisionResult) -> VisionResult:
@@ -157,32 +203,46 @@ def process(jpeg_bytes: bytes, frame_id: int, ts_ms: float) -> VisionResult:
     if reason:
         return done(VisionResult(False, reason, sharp))
 
+    t = time.perf_counter()
     boxes = detector.detect(bgr)
+    yoloe_ms = (time.perf_counter() - t) * 1000
     items = _merge_same([b for b in boxes if b.kind == "item"])
     furniture = _merge_same([b for b in boxes if b.kind == "furniture"])
+    groups = _group_items(items)
+
+    # One DINOv2 batch: the whole frame (if there are area references), then one crop per
+    # object whose YOLOE item(s) all have reference crops.
+    t = time.perf_counter()
+    use_dino = [all(item_match.has_refs(b.name) for b in g) for g in groups]
+    images = [bgr] if areas.has_refs() else []
+    images += [dino.square(_crop(bgr, g[0].xyxy, ITEM_CROP_PAD)) for g, use in zip(groups, use_dino) if use]
+    fps = dino.embed(images) if images else np.zeros((0, 384), np.float32)
+    frame_fp = fps[0] if areas.has_refs() else None
+    crop_fps = iter(fps[1:] if areas.has_refs() else fps)
+    area = areas.match(frame_fp, ts_ms)
+    dino_ms = (time.perf_counter() - t) * 1000 if images else 0.0
+
     frame_w = bgr.shape[1]
-    blurred = _blur_faces(bgr, grey) if items else bgr
+    blurred = blur_faces(bgr, grey) if items else bgr
     sharp_r = round(sharp, 2)
 
     sightings: list[dict] = []
     items_seen: set[str] = set()
-    for group in _group_items(items):
+    for group, use in zip(groups, use_dino):
         top = group[0]
-        if len(group) == 1:
-            item_id, margin = top.name, 1.0  # margin is a placeholder until DINOv2
+        item_id, candidates, margin = _identify(group, next(crop_fps) if use else None)
+        if item_id:
             items_seen.add(item_id)
-        else:
-            item_id, margin = "", group[0].conf - group[1].conf  # ambiguous: different items, same box
         furn, rel_pos = _match_furniture(top, furniture, frame_w)
         sightings.append({
             "ts_ms": ts_ms,
             "frame_id": frame_id,
-            "area_id": "",
-            "area_conf": 0.0,
+            "area_id": area.area_id,
+            "area_conf": area.area_conf,
             "label": top.wording,
             "det_conf": round(top.conf, 4),
             "item_id": item_id,
-            "candidates_json": _dumps([[b.name, round(b.conf, 4)] for b in group]),
+            "candidates_json": _dumps(candidates),
             "match_margin": round(margin, 4),
             "furniture": furn,
             "rel_pos_json": rel_pos,
@@ -194,11 +254,12 @@ def process(jpeg_bytes: bytes, frame_id: int, ts_ms: float) -> VisionResult:
     frame = {
         "ts_ms": ts_ms,
         "frame_id": frame_id,
-        "area_id": "",
-        "area_conf": 0.0,
+        "area_id": area.area_id,
+        "area_conf": area.area_conf,
         "furniture_in_view_json": _dumps(sorted({f.name for f in furniture})),
         "items_seen_json": _dumps(sorted(items_seen)),
         "sharpness": sharp_r,
     }
     furniture_boxes = [(f.name, _xywh(f.xyxy), round(f.conf, 4)) for f in furniture]
-    return done(VisionResult(True, "", sharp, sightings, frame, furniture_boxes))
+    return done(VisionResult(True, "", sharp, sightings, frame, furniture_boxes, area=area,
+                             yoloe_ms=yoloe_ms, dino_ms=dino_ms))

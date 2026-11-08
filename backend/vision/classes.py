@@ -49,6 +49,12 @@ ITEMS: dict[str, list[str]] = {
     ],
 }
 
+# area_ids exactly as in backend/seed_spacetime.py. Reference folders with other names still
+# work (for testing) but get a warning, because Spacetime only knows these.
+AREA_IDS: list[str] = [
+    "couch", "desk", "bed_1", "bed_2", "tv_area", "cupboard_corner", "closet", "bathroom", "demo_table",
+]
+
 # Fixed furniture name -> wordings. Spacetime compares furniture names across frames, so
 # whichever wording fires, the furniture is always reported under its fixed name.
 FURNITURE: dict[str, list[str]] = {

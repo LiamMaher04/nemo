@@ -8,3 +8,6 @@ snapshots/
 *.png
 *.heic
 *.heif
+# Reference photos for DINOv2 (photos of our rooms and things)
+refs/
+test_refs/

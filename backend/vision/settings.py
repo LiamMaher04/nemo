@@ -32,6 +32,26 @@ DUPLICATE_DIFF_MAX: float = float(_clean(os.getenv("DUPLICATE_DIFF_MAX"), "2.0")
 KEEPALIVE_S: float = float(_clean(os.getenv("KEEPALIVE_S"), "3"))
 
 
+# DINOv2 (area and item matching). Revision pinned so the weights never change under us.
+DINO_MODEL: str = _clean(os.getenv("DINO_MODEL"), "facebook/dinov2-small")
+DINO_REVISION: str = _clean(os.getenv("DINO_REVISION"), "ed25f3a31f01632728cabb09d1542f84ab7b0056")
+# Reference photos: <REFS_DIR>/areas/<area_id>/*.jpg and <REFS_DIR>/items/<item_id>/*.jpg
+REFS_DIR: Path = REPO_ROOT / _clean(os.getenv("REFS_DIR"), "backend/vision/refs")
+
+# Area voting: kept frames from the last AREA_VOTE_S seconds each vote for one area (or none).
+AREA_VOTE_S: float = float(_clean(os.getenv("AREA_VOTE_S"), "3"))
+# A frame votes only if its best area scores at least this (cosine similarity) ...
+AREA_SIM_MIN: float = float(_clean(os.getenv("AREA_SIM_MIN"), "0.55"))
+# ... and beats the second-best area by at least this.
+AREA_MARGIN_MIN: float = float(_clean(os.getenv("AREA_MARGIN_MIN"), "0.03"))
+# The winning area needs at least this share of the window's votes, else area_id is "".
+AREA_VOTE_MIN: float = float(_clean(os.getenv("AREA_VOTE_MIN"), "0.5"))
+
+# Item matching: below either of these the sighting is ambiguous (item_id "").
+ITEM_SIM_MIN: float = float(_clean(os.getenv("ITEM_SIM_MIN"), "0.40"))
+ITEM_MARGIN_MIN: float = float(_clean(os.getenv("ITEM_MARGIN_MIN"), "0.05"))
+
+
 def weights_path() -> Path:
     """Find DETECTOR_WEIGHTS: as given, then in backend/, then at the repo root.
 
