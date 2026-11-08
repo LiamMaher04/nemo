@@ -11,7 +11,7 @@ const rules = [
   },
   {
     title: "Faces blurred",
-    body: "Faces are blurred before anything is saved, and Nemo doesn’t recognise people.",
+    body: "Faces are blurred before anything is saved, and Nemo doesn’t recognize people.",
     art: "face",
   },
   {

@@ -54,7 +54,7 @@ src/
   theme/tokens.ts        ← colours, fonts, type scale, radii, shadows (edit here)
   content/site.ts        ← tagline, nav links, contact email, site URL
   content/faq.ts         ← FAQ questions and answers (in Nemo's voice)
-  content/team.ts        ← team names (roles optional, TODO)
+  content/team.ts        ← team names and roles
   app/
     layout.tsx           ← fonts (next/font), metadata, SEO, skip link
     page.tsx             ← puts the sections in order
@@ -92,8 +92,6 @@ Sections, in page order: Header · Hero · The problem · How it works · Why Ne
 
 Search the code for `TODO` to find each one:
 
-- [ ] **Team roles**: names are in; add roles (optional) in `src/content/team.ts`. A role only shows when it's filled in.
-- [ ] **Pricing**: the "What does it cost?" answer in `src/content/faq.ts` is a placeholder.
 - [ ] **Waitlist backend**: connect `src/app/api/waitlist/route.ts` to a real service, or set `NEXT_PUBLIC_WAITLIST_ENDPOINT`. Right now sign-ups are only logged, **not stored**.
 - [ ] **Contact email**: set `NEXT_PUBLIC_CONTACT_EMAIL` (the default `hello@nemo.example.com` is a placeholder).
 - [ ] **Domain**: set `NEXT_PUBLIC_SITE_URL`.

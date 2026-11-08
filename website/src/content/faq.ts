@@ -46,17 +46,12 @@ export const faqs = [
   {
     q: "Will my family know if something’s wrong?",
     a: [
-      "If you’d like, I can text a family member or carer when something seems off: you’ve left the house, the pill box hasn’t moved by its usual time, I think you may have fallen, or nothing has moved for hours. It’s a nudge to check in, not a diagnosis.",
+      "If you’d like, I can text a family member or caregiver when something seems off: you’ve left the house, the pill box hasn’t moved by its usual time, I think you may have fallen, or nothing has moved for hours. It’s a nudge to check in, not a diagnosis.",
       "I can also remind you out loud, like “You usually take your pills around now. They’re on the desk.”",
     ],
   },
   {
     q: "Why is it called Nemo?",
     a: ["My name comes from Mnemosyne, the Greek goddess of memory."],
-  },
-  {
-    q: "What does it cost?",
-    // TODO: pricing placeholder: not set yet, intentionally not discussed.
-    a: ["Pricing hasn’t been set yet. Join the waitlist and you’ll hear first."],
   },
 ];
