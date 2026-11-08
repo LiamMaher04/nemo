@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Colour tokens mirrored from src/theme/tokens.ts for use in plain CSS/SVG. */
+:root {
+  --navy: theme("colors.navy");
+  --coral: theme("colors.coral");
+  --cream: theme("colors.cream");
+  --aqua: theme("colors.aqua");
+  --charcoal: theme("colors.charcoal");
+  --focus-ring: theme("colors.navy");
+}
+
+@layer base {
+  html {
+    scroll-padding-top: 5.5rem; /* keep anchored sections clear of the sticky header */
+    -webkit-text-size-adjust: 100%;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+  body {
+    @apply bg-cream font-body text-base text-charcoal antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-heading font-semibold text-navy;
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    background: rgb(255 122 89 / 0.35);
+    color: theme("colors.charcoal");
+  }
+  :focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 3px;
+    border-radius: 0.375rem;
+  }
+  /* Anything on navy flips its text and focus ring to cream. */
+  .on-navy {
+    --focus-ring: theme("colors.cream");
+    @apply bg-navy text-cream;
+  }
+  .on-navy h1,
+  .on-navy h2,
+  .on-navy h3 {
+    @apply text-cream;
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-container px-5 sm:px-8 lg:px-10;
+  }
+  .section {
+    @apply py-24 sm:py-32;
+  }
+  .display {
+    @apply font-heading text-5xl font-semibold sm:text-6xl;
+  }
+  .rule {
+    border-top: 1px solid rgba(27, 58, 91, 0.16);
+  }
+  .on-navy .rule {
+    border-color: rgba(247, 243, 236, 0.2);
+  }
+
+  .btn {
+    @apply inline-flex min-h-[3.25rem] items-center justify-center gap-2.5 rounded-full px-7 font-heading text-base font-semibold transition-[box-shadow,background-color,color] duration-200;
+  }
+  /* Coral is reserved for the one primary action. Navy label = 4.54:1. */
+  .btn-primary {
+    @apply btn bg-coral text-navy hover:ring-[6px] hover:ring-coral/25;
+  }
+  .btn-ghost {
+    @apply btn text-navy ring-1 ring-inset ring-navy/30 hover:bg-navy/[0.05] hover:ring-navy;
+  }
+  .text-link {
+    @apply font-medium text-navy underline decoration-navy/30 decoration-2 underline-offset-[6px] transition-colors hover:decoration-navy;
+  }
+  .on-navy .text-link {
+    @apply text-cream decoration-cream/40 hover:decoration-cream;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
