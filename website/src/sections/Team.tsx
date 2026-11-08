@@ -13,7 +13,7 @@ export function Team() {
               Four students. One weekend. A lot of lost keys.
             </h2>
             <p className="mt-8 max-w-xl text-lg">
-              We built Nemo at HackUTD 2026 (Zero Day), from a 3D-printed case to a clip that answers out loud. We&rsquo;ve all
+              We built Nemo at HackUTD 2026 (Zero Day), from a 3D-printed case to a device that answers out loud. We&rsquo;ve all
               watched someone we love lose ten minutes to a pair of glasses, and we wanted to give that time back. We&rsquo;re proud
               of what we made in a weekend, and we&rsquo;re just getting started.
             </p>

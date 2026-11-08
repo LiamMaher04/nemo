@@ -5,17 +5,17 @@ import { SectionLabel } from "@/components/SectionLabel";
 const specs = [
   { term: "Size", detail: "About the size of a deck of cards, and light enough to forget." },
   { term: "Wear it", detail: "On a shirt, a pocket, a lanyard or a necklace." },
-  { term: "Controls", detail: "One big button you can find without looking." },
-  { term: "Answers", detail: "Out loud, in a clear voice. It can show you a photo, too." },
+  { term: "Controls", detail: "One button, easy to find by feel." },
+  { term: "Answers", detail: "Out loud, in a clear voice, with a snapshot on its small screen." },
   { term: "Works", detail: "Around your home, over WiFi, with its paired device." },
   { term: "Charging", detail: "A standard USB-C cable." },
 ];
 
 // Callout positions are percentages of the render's own box (see ClipVisual).
 const callouts = [
-  { label: "Tiny camera", top: "27%", side: "right" as const },
-  { label: "The one button", top: "55%", side: "right" as const },
-  { label: "Speaker", top: "76%", side: "right" as const },
+  { label: "Tiny camera", top: "23%", side: "right" as const },
+  { label: "The one button", top: "40%", side: "right" as const },
+  { label: "Small screen", top: "63%", side: "right" as const },
   { label: "Clip on the back", top: "6%", side: "right" as const },
 ];
 
@@ -23,7 +23,7 @@ export function Product() {
   return (
     <section aria-labelledby="product-title" className="section" id="product">
       <div className="container-page">
-        <SectionLabel index="06">The clip</SectionLabel>
+        <SectionLabel index="06">The device</SectionLabel>
         <Reveal>
           <h2 id="product-title" className="display mt-14 max-w-4xl">
             Small enough to wear all day. Simple enough to forget it&rsquo;s there.

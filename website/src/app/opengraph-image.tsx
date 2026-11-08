@@ -30,7 +30,7 @@ export default function OpengraphImage() {
             {site.tagline}
           </div>
           <div style={{ fontSize: 34, color: colors.charcoal, maxWidth: 900 }}>
-            A small clip that remembers where you put things.
+            A small wearable that remembers where you put things.
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>

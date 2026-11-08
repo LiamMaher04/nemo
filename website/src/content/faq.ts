@@ -3,26 +3,26 @@ export const faqs = [
   {
     q: "What is Nemo?",
     a: [
-      "I’m a small clip you wear on your shirt, pocket, lanyard or necklace. I notice where you put everyday things down. When you can’t find something, press my button and ask. I’ll tell you where I last saw it.",
+      "I’m a small device you clip onto your shirt, pocket, lanyard or necklace. I notice where you put everyday things down. When you can’t find something, press my button and ask. I’ll tell you where I last saw it and show you a snapshot on my little screen.",
     ],
   },
   {
     q: "How does it know where my things are?",
     a: [
-      "I have a tiny camera that takes quick looks at what’s in front of you as you move around your home. When you set your keys on the table, I make a note of it. Later, when you ask, I remember the last place I saw them, and I can show you the picture.",
+      "I have a tiny camera that takes quick looks at what’s in front of you as you move around your home. When you set your keys on the table, I make a note of it. Later, when you ask, I remember the last place I saw them, and I can show you the snapshot.",
     ],
   },
   {
     q: "Is it recording me all the time?",
     a: [
-      "While I’m switched on, I take quick looks so I can notice where things land. But I’m paying attention to things, not people. I’m looking for your keys, not at you.",
-      "Those pictures go only to your paired device at home. They aren’t uploaded to the internet, posted anywhere, or shared with anyone.",
+      "No. While I’m on, I take a quick look about once a second to notice where things land, but I don’t keep video. I keep only small snapshots of your things, and faces are blurred before anything is saved. My microphone only turns on when you press my button.",
+      "To remember and answer, some of my work happens online, using only those small snapshots of your things. I’m looking for your keys, not at you.",
     ],
   },
   {
     q: "What can it find?",
     a: [
-      "The everyday things that like to wander off: keys, glasses, the TV remote, your phone and your wallet. We’re working on teaching me more as we go.",
+      "Right now: keys, glasses, the TV remote and a pill box. We’re working on teaching me more as we go.",
     ],
   },
   {
@@ -34,7 +34,7 @@ export const faqs = [
   {
     q: "Do I need a phone or computer?",
     a: [
-      "Yes. I work with a paired device at home, like a laptop, that does the remembering for me. I connect to it over your home WiFi. Someone sets it up once (you, or a family member), and after that you never need to touch it. You just press my button and ask.",
+      "Yes. I work with a laptop at home that does the heavy lifting for me. I connect to it over WiFi, and it needs an internet connection. Someone sets it up once (you, or a family member), and after that you never need to touch it. You just press my button and ask.",
     ],
   },
   {

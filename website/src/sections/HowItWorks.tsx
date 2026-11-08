@@ -32,7 +32,7 @@ const art = [
 const steps = [
   {
     title: "Nemo quietly notices",
-    body: "Wear the clip as you go about your day. Nemo notices where everyday things get put down. Nothing to tag, nothing to set up on each item.",
+    body: "Wear Nemo as you go about your day. Nemo notices where everyday things get put down. Nothing to tag, nothing to set up on each item.",
   },
   {
     title: "You press and ask",
@@ -40,7 +40,7 @@ const steps = [
   },
   {
     title: "Nemo tells you where",
-    body: "Nemo answers out loud, “I last saw your glasses on the bookshelf,” and can show you a photo of the spot.",
+    body: "Nemo answers out loud, “I last saw your glasses on the bookshelf,” and shows a snapshot of the spot on its little screen.",
   },
 ];
 
@@ -56,7 +56,7 @@ export function HowItWorks() {
             </h2>
           </Reveal>
           <Reveal delay={0.08} className="lg:col-span-5 lg:col-start-8 lg:pt-3">
-            <p className="text-xl">Three steps and one button. No menus to learn and no screen to read.</p>
+            <p className="text-xl">Three steps and one button. No menus to learn, nothing to set up each day.</p>
           </Reveal>
         </div>
 

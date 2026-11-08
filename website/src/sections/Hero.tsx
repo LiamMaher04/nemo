@@ -5,9 +5,8 @@ import { ThingIcon } from "@/components/ThingIcons";
 const things = [
   { label: "Keys", Icon: ThingIcon.keys },
   { label: "Glasses", Icon: ThingIcon.glasses },
-  { label: "The remote", Icon: ThingIcon.remote },
-  { label: "Phone", Icon: ThingIcon.phone },
-  { label: "Wallet", Icon: ThingIcon.wallet },
+  { label: "TV remote", Icon: ThingIcon.remote },
+  { label: "Pill box", Icon: ThingIcon.pillbox },
 ];
 
 export function Hero() {
@@ -21,7 +20,7 @@ export function Hero() {
             so you don&rsquo;t have&nbsp;to.
           </h1>
           <p className="mt-7 max-w-xl text-xl text-charcoal">
-            A small clip you wear that remembers where you put things and tells you when you ask.
+            A small device you wear that remembers where you put things and tells you when you ask.
           </p>
           <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
             <a href="#waitlist" className="btn-primary">

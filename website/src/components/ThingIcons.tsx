@@ -32,16 +32,10 @@ export const ThingIcon = {
       <path d="M14 15h4M14 19h4M14 23h4" />
     </svg>
   ),
-  phone: () => (
+  pillbox: () => (
     <svg {...common}>
-      <rect x="9" y="3" width="14" height="26" rx="3" />
-      <path d="M14 25h4" />
-    </svg>
-  ),
-  wallet: () => (
-    <svg {...common}>
-      <path d="M5 10h20a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V10z" />
-      <path d="M5 10l15-4.5V10M21 18h3" />
+      <rect x="3" y="9" width="26" height="15" rx="3" />
+      <path d="M3 14h26M9.5 9v15M16 9v15M22.5 9v15" />
     </svg>
   ),
 };

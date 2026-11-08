@@ -11,7 +11,7 @@ const conversations = [
     question: "Where are my keys?",
     answer: "I last saw your keys on the kitchen table, next to the fruit bowl. That was about twenty minutes ago.",
     Scene: KeysScene,
-    alt: "Photo of a kitchen table with a set of keys beside a bowl of fruit, circled.",
+    alt: "Snapshot of a kitchen table with a set of keys beside a bowl of fruit, circled.",
   },
   {
     item: "glasses",
@@ -19,7 +19,7 @@ const conversations = [
     question: "Have you seen my glasses?",
     answer: "Your glasses are on the top shelf of the bookcase in the living room. You set them down this morning.",
     Scene: GlassesScene,
-    alt: "Photo of a bookcase with a pair of reading glasses on the top shelf, circled.",
+    alt: "Snapshot of a bookcase with a pair of reading glasses on the top shelf, circled.",
   },
   {
     item: "remote",
@@ -27,7 +27,7 @@ const conversations = [
     question: "Where did I put the remote?",
     answer: "The remote is on the right arm of the sofa. I saw it there about an hour ago.",
     Scene: RemoteScene,
-    alt: "Photo of a sofa with the TV remote resting on its right arm, circled.",
+    alt: "Snapshot of a sofa with the TV remote resting on its right arm, circled.",
   },
 ];
 

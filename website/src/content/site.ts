@@ -6,7 +6,7 @@ export const site = {
   promise: "You'll always know where it is.",
   ask: "Just ask Nemo.",
   description:
-    "Nemo is a small clip you wear that notices where you put everyday things like keys, glasses and the remote. Press one button, ask out loud, and Nemo tells you where it last saw them.",
+    "Nemo is a small device you wear that notices where you put everyday things like keys, glasses and the remote. Press one button, ask out loud, and Nemo tells you where it last saw them.",
   // TODO: set NEXT_PUBLIC_SITE_URL in Vercel to your real domain.
   url:
     process.env.NEXT_PUBLIC_SITE_URL ??

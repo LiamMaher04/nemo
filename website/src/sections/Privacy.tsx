@@ -4,65 +4,40 @@ import { colors } from "@/theme/tokens";
 
 const line = { fill: "none", stroke: colors.cream, strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
 
-const promises = [
+/** The three privacy rules Nemo is built around (see the repo's CLAUDE.md). */
+const rules = [
   {
-    title: "Things, not people",
-    body: "Nemo pays attention to everyday objects like keys, glasses and the remote. It isn’t there to watch you or anyone you’re with.",
+    title: "No video kept",
+    body: "Nemo takes quick looks, not recordings. It keeps only small snapshots of your things.",
+    icon: (
+      <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden="true">
+        <rect x="5" y="13" width="26" height="22" rx="4" {...line} />
+        <path d="M31 21l11-6v18l-11-6" {...line} />
+        <path d="M6 42L42 6" stroke={colors.coral} strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    ),
   },
   {
-    title: "It stays at home",
-    body: "The pictures and the remembering live on your own paired device at home. Not uploaded. Not posted anywhere.",
+    title: "Faces blurred",
+    body: "Faces are blurred before anything is saved, and Nemo doesn’t recognise people.",
+    icon: (
+      <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden="true">
+        <circle cx="24" cy="24" r="17" {...line} />
+        <path d="M14 20h20M12 26h24M14 32h20" {...line} strokeOpacity="0.55" strokeDasharray="2 4" />
+      </svg>
+    ),
   },
   {
-    title: "Help, not keeping tabs",
-    body: "Nemo isn’t a way for anyone to check up on you. It answers one person’s questions: yours.",
+    title: "Listens only when asked",
+    body: "The microphone turns on only when you press the button.",
+    icon: (
+      <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden="true">
+        <rect x="18" y="6" width="12" height="22" rx="6" {...line} />
+        <path d="M11 22a13 13 0 0 0 26 0M24 35v7M17 42h14" {...line} />
+      </svg>
+    ),
   },
 ];
-
-/** Where the pictures go: and where they don't. */
-function FlowDiagram() {
-  return (
-    <figure className="rounded-2xl ring-1 ring-cream/20">
-      <ol className="grid divide-y divide-cream/20 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        <li className="flex flex-col items-start gap-5 p-7">
-          <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden="true">
-            <rect x="14" y="5" width="20" height="38" rx="7" {...line} />
-            <circle cx="24" cy="15" r="3.5" {...line} />
-            <circle cx="24" cy="29" r="5" fill={colors.coral} />
-          </svg>
-          <p>
-            <span className="block font-heading text-lg font-semibold">Your clip</span>
-            notices where things land
-          </p>
-        </li>
-        <li className="flex flex-col items-start gap-5 p-7">
-          <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden="true">
-            <path d="M6 22L24 7l18 15v19H6z" {...line} />
-            <rect x="15" y="25" width="18" height="11" rx="1.5" {...line} />
-            <path d="M12 36h24" {...line} />
-          </svg>
-          <p>
-            <span className="block font-heading text-lg font-semibold">Your paired device</span>
-            remembers, at home
-          </p>
-        </li>
-        <li className="flex flex-col items-start gap-5 p-7">
-          <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden="true">
-            <path d="M14 34h21a8 8 0 0 0 0-16 11 11 0 0 0-21-2A9 9 0 0 0 14 34z" {...line} strokeOpacity="0.55" />
-            <path d="M8 42L40 8" stroke={colors.coral} strokeWidth="3" strokeLinecap="round" />
-          </svg>
-          <p>
-            <span className="block font-heading text-lg font-semibold">The internet</span>
-            never sees it
-          </p>
-        </li>
-      </ol>
-      <figcaption className="sr-only">
-        Pictures go from your clip to your paired device at home, and are never sent to the internet.
-      </figcaption>
-    </figure>
-  );
-}
 
 export function Privacy() {
   return (
@@ -77,24 +52,41 @@ export function Privacy() {
           </Reveal>
           <Reveal delay={0.08} className="lg:col-span-4 lg:col-start-9 lg:pt-3">
             <p className="text-xl">
-              It&rsquo;s the first question families ask, and it should be. A camera you wear has to earn your trust. Here&rsquo;s
-              how Nemo does.
+              It&rsquo;s the first question families ask, and it should be. Here&rsquo;s exactly what Nemo keeps, and what it
+              doesn&rsquo;t.
             </p>
           </Reveal>
         </div>
 
         <Reveal delay={0.1} className="mt-16">
-          <FlowDiagram />
+          <ul className="grid divide-y divide-cream/20 rounded-2xl ring-1 ring-cream/20 md:grid-cols-3 md:divide-x md:divide-y-0">
+            {rules.map((r) => (
+              <li key={r.title} className="flex flex-col items-start gap-5 p-7">
+                {r.icon}
+                <div>
+                  <h3 className="text-xl">{r.title}</h3>
+                  <p className="mt-2">{r.body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
         </Reveal>
 
-        <ul className="mt-16 grid gap-10 md:grid-cols-3 md:gap-12">
-          {promises.map((p, i) => (
-            <Reveal as="li" key={p.title} delay={i * 0.06} className="rule pt-6">
-              <h3 className="text-xl">{p.title}</h3>
-              <p className="mt-3">{p.body}</p>
-            </Reveal>
-          ))}
-        </ul>
+        <div className="mt-16 grid gap-10 md:grid-cols-2 md:gap-12">
+          <Reveal className="rule pt-6">
+            <h3 className="text-xl">What goes online</h3>
+            <p className="mt-3">
+              A laptop at home does the looking. To remember where things are and to put answers into words, Nemo uses online
+              services, and it only ever sends those small snapshots of your things. Never video.
+            </p>
+          </Reveal>
+          <Reveal delay={0.06} className="rule pt-6">
+            <h3 className="text-xl">What it&rsquo;s for</h3>
+            <p className="mt-3">
+              Finding your keys, your glasses, the remote. Nemo is there to help you with your things. That&rsquo;s the whole job.
+            </p>
+          </Reveal>
+        </div>
       </div>
     </section>
   );

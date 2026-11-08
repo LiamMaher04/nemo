@@ -1,7 +1,9 @@
 import { colors } from "@/theme/tokens";
 
 /**
- * Front-view render of the Nemo clip (proportions follow the 52 × 80 mm case).
+ * Front-view render of the Nemo device. Layout follows the 3D-printed case
+ * (object_finder_clip.scad): 52 x 80 mm body, teal lens ring at the top, one
+ * small button in the middle, screen window below.
  *
  * TODO: this is a stand-in. Replace with the 3D model / real product image once
  * the team shares a photo of the finished device. Every product image on the
@@ -12,8 +14,8 @@ export function ClipVisual({ className, idPrefix = "clip" }: { className?: strin
   return (
     <svg viewBox="0 0 260 392" className={className} role="img" aria-labelledby={id("t")} xmlns="http://www.w3.org/2000/svg">
       <title id={id("t")}>
-        The Nemo clip: a small rounded navy device about the size of a deck of cards, with a tiny camera lens near the top and
-        one large coral button.
+        Nemo: a small rounded navy device about the size of a deck of cards, with a tiny camera lens near the top, one coral
+        button in the middle and a small screen below it.
       </title>
       <defs>
         <linearGradient id={id("body")} x1="0.15" y1="0" x2="0.85" y2="1">
@@ -56,26 +58,33 @@ export function ClipVisual({ className, idPrefix = "clip" }: { className?: strin
       <rect x="30" y="24" width="200" height="308" rx="50" fill={`url(#${id("body")})`} />
       <rect x="31" y="25" width="198" height="306" rx="49" fill="none" stroke={`url(#${id("edge")})`} strokeWidth="2" />
 
-      {/* status light */}
-      <circle cx="188" cy="62" r="4" fill={colors.aqua} />
-      <circle cx="188" cy="62" r="9" fill={colors.aqua} opacity="0.18" />
+      {/* lens: teal ring, Ø20 mm, centre 23 mm above middle */}
+      <circle cx="130" cy="90" r="38" fill="#0C1D30" />
+      <circle cx="130" cy="90" r="34" fill="none" stroke={colors.aqua} strokeWidth="6" />
+      <circle cx="130" cy="90" r="22" fill={`url(#${id("glass")})`} />
+      <circle cx="130" cy="90" r="8" fill="#03080E" />
+      <ellipse cx="122" cy="82" rx="6.5" ry="4" fill="#fff" opacity="0.7" transform="rotate(-35 122 82)" />
 
-      {/* lens */}
-      <circle cx="130" cy="106" r="33" fill="#0C1D30" />
-      <circle cx="130" cy="106" r="33" fill="none" stroke="#fff" strokeOpacity="0.1" strokeWidth="1.5" />
-      <circle cx="130" cy="106" r="23" fill={`url(#${id("glass")})`} />
-      <circle cx="130" cy="106" r="9" fill="#03080E" />
-      <ellipse cx="121" cy="97" rx="7" ry="4.5" fill="#fff" opacity="0.7" transform="rotate(-35 121 97)" />
+      {/* the one button: Ø9 mm cap, 6 mm above middle */}
+      <circle cx="130" cy="155" r="22" fill={`url(#${id("well")})`} />
+      <circle cx="130" cy="154" r="17" fill={`url(#${id("btn")})`} />
+      <ellipse cx="130" cy="146" rx="9" ry="3.5" fill="#fff" opacity="0.28" />
 
-      {/* the one button, in a soft well */}
-      <circle cx="130" cy="216" r="54" fill={`url(#${id("well")})`} />
-      <circle cx="130" cy="214" r="45" fill={`url(#${id("btn")})`} />
-      <ellipse cx="130" cy="190" rx="26" ry="9" fill="#fff" opacity="0.22" />
+      {/* screen window: 33 x 20 mm, 18 mm below middle, showing a snapshot */}
+      <rect x="66" y="208" width="128" height="78" rx="8" fill="#050D16" />
+      <rect x="66" y="208" width="128" height="78" rx="8" fill="none" stroke="#fff" strokeOpacity="0.1" strokeWidth="1.5" />
+      <g transform="translate(78 220)">
+        <rect width="104" height="40" rx="3" fill={colors.cream} opacity="0.14" />
+        <path d="M0 30h104" stroke={colors.cream} strokeOpacity="0.35" strokeWidth="2" />
+        <circle cx="40" cy="24" r="5" fill="none" stroke={colors.cream} strokeOpacity="0.85" strokeWidth="2" />
+        <path d="M44 27l9 3" stroke={colors.cream} strokeOpacity="0.85" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="45" cy="25" r="14" fill="none" stroke={colors.coral} strokeWidth="2" strokeDasharray="3 3" />
+        <rect y="47" width="62" height="5" rx="2.5" fill={colors.aqua} opacity="0.8" />
+      </g>
 
-      {/* speaker slots */}
-      <g stroke={colors.cream} strokeOpacity="0.32" strokeWidth="4" strokeLinecap="round">
-        <path d="M104 292h52" />
-        <path d="M112 304h36" />
+      {/* edge vents (mic / speaker) */}
+      <g stroke={colors.cream} strokeOpacity="0.28" strokeWidth="3.5" strokeLinecap="round">
+        <path d="M108 310h44" />
       </g>
     </svg>
   );
