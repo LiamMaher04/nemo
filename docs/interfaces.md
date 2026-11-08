@@ -1,4 +1,4 @@
-# Interfaces (the contracts between the four parts)
+# Interfaces (the contracts between the parts)
 
 Agree these first so everyone can build in parallel. Change a contract only in this file, in the same
 commit as the code change, and tell the team.
@@ -8,22 +8,26 @@ commit as the code change, and tell the team.
 ### POST /frame
 - Body: raw JPEG bytes. `Content-Type: image/jpeg`.
 - Headers: `X-Device-Id: nemo-a`, `X-Frame-Ts: <ms since device boot>` (optional).
-- Response: `200 {"ok": true}`. Device ignores the body; it just keeps sending.
-- Rate: start at 1 fps, up to ~4 if the hotspot and heat allow. Resolution 1280x960 or higher if
-  stable (keys are tiny).
+- Response: `200 {"ok": true}`. The device ignores the body; it just keeps sending.
+- The device captures about 5 to 10 frames a second and sends only the sharpest one each second.
+- Resolution 1280 px wide or more (keys are tiny).
+- The backend also drops blurry and near-duplicate frames before running any models.
 
 ### POST /ask
-- Body: raw audio of the button press. Default `audio/wav`, 16 kHz, mono, 16-bit PCM.
+- The wearer holds the button and asks out loud. The device records while the button is held.
+- Body: raw audio. `audio/wav`, 16 kHz, mono, 16-bit PCM.
 - Headers: `X-Device-Id`.
-- Response: `200`, `Content-Type: audio/wav` (the spoken answer, for the speaker).
-  Also header `X-Answer-Text: <the answer text>` so the device can show it on the OLED if useful.
-- Fallback: `POST /ask_text` with `{"question": "where's my remote?"}` returns
-  `{"answer": "...", "item_id": "...", "snapshot_url": "..."}` (used by the carer app Ask box and for
-  testing without the device).
+- Backend: speech to text (faster-whisper; also test Nemotron 3 Nano Omni) -> agent -> text to
+  speech.
+- Response: `200`, `Content-Type: audio/wav` (the spoken answer, played on Nemo's speaker).
 
-### POST /coverage
-- Body: `{"device_id": "nemo-a", "state": "recording" | "paused" | "off", "reason": "button" | "boot" | "charging"}`
-- Lets the agent say "I wasn't recording between 2 and 4".
+### GET /say
+- The device polls this every few seconds for anything to say (reminders).
+- Headers: `X-Device-Id`.
+- Response: `200`, `Content-Type: audio/wav` if there's something to play, otherwise `204` with no
+  body.
+
+The OLED only ever shows eyes (awake when on, closed when off). Nothing from the backend goes on it.
 
 ## 2. Backend -> Spacetime (reducer calls over HTTP)
 
@@ -31,70 +35,91 @@ commit as the code change, and tell the team.
 Body is a JSON array of the reducer's arguments, in order.
 
 ### add_sighting
-Python reports what it SAW. Spacetime decides what it MEANS (placed / carried / moved).
+Python reports what it SAW. Spacetime decides what it MEANS (placed / carried / used / moved).
 
-| arg | type | notes |
-|---|---|---|
-| ts_ms | u64 | UTC ms since epoch |
-| frame_id | u64 | backend's frame counter |
-| track_id | i32 | from the tracker, -1 if none |
-| label | string | detector class, e.g. "eyeglasses" |
-| det_conf | f32 | 0 to 1 |
-| item_id | string | best match, "" if ambiguous or unknown |
-| candidates_json | string | e.g. `[["reading_glasses",0.82],["sunglasses",0.79]]` |
-| match_margin | f32 | top1 minus top2 similarity |
-| room_id | string | "" if unknown |
-| room_conf | f32 | |
-| anchor_id | string | e.g. "coffee_table", "" if none |
-| relation | string | "on", "next_to", "in", "" |
-| bbox_json | string | `[x, y, w, h]` in pixels of the full frame |
-| in_hand | bool | item box overlaps a hand box |
-| thumb_b64 | string | small JPEG thumbnail (~160 px wide), base64. Faces blurred. |
+Arguments, in this order:
 
-### set_coverage(device_id: string, state: string, reason: string, ts_ms: u64)
+| # | arg | type | notes |
+|---|---|---|---|
+| 1 | ts_ms | f64 | UTC ms since epoch |
+| 2 | frame_id | f64 | backend's frame counter |
+| 3 | area_id | string | DINOv2 match against the pre-recorded area clips |
+| 4 | area_conf | f32 | 0 to 1 |
+| 5 | label | string | YOLOE class |
+| 6 | det_conf | f32 | 0 to 1 |
+| 7 | item_id | string | best match, `""` if ambiguous |
+| 8 | candidates_json | string | e.g. `[["reading_glasses",0.82],["sunglasses",0.79]]` |
+| 9 | match_margin | f32 | DINOv2 top 1 minus top 2 similarity |
+| 10 | furniture | string | furniture the item is on or near, `""` if none |
+| 11 | rel_pos_json | string | `[x, y]`, 0 to 1, relative to the furniture box |
+| 12 | moves_with_background | f32 | 0 to 1. 1 = resting, 0 = carried by the wearer |
+| 13 | sharpness | f32 | frame sharpness score |
+| 14 | bbox_json | string | `[x, y, w, h]` in pixels of the full frame |
+| 15 | thumb_b64 | string | small JPEG thumbnail, base64. Faces blurred. |
 
-### Setup reducers (called from the carer app)
-- `upsert_item(item_id, display_name, aliases_json, detector_prompt, importance, is_container)`
-- `upsert_room(room_id, name, aliases_json)`
-- `upsert_anchor(anchor_id, room_id, name)`
+Furniture is only ever a place, never an item: it fills `furniture`, never `item_id` or `label`.
 
-## 3. Spacetime tables (first version, grow from here)
+### Seed reducers (demo items and areas)
+- `upsert_item(item_id, name, category, importance, aliases, attributes_json)`
+- `upsert_area(area_id, name, room)`
 
-- `items`: item_id (pk), display_name, aliases_json, detector_prompt, importance, is_container
-- `rooms`: room_id (pk), name, aliases_json
-- `anchors`: anchor_id (pk), room_id, name
-- `sightings`: id (auto), all add_sighting args. Append-only, never edited.
-- `item_state`: item_id (pk), state ("placed" | "carried" | "in_container" | "unknown"),
-  last_placed_room, last_placed_anchor, last_placed_relation, last_placed_ts_ms, last_placed_thumb_b64,
-  last_seen_room, last_seen_ts_ms, confidence, alternatives_json
-- `events`: id, item_id, type ("picked_up" | "placed" | "moved"), ts_ms, from_json, to_json
-- `coverage`: id, device_id, state, reason, ts_ms
-- `alerts`: id, item_id, type, message, ts_ms, acknowledged
+## 3. Spacetime tables
+
+- `items`: item_id (pk), name, category, importance, aliases (list of strings), attributes (JSON).
+  No owner.
+- `areas`: area_id (pk), name, room.
+- `sightings`: id (auto), plus every `add_sighting` argument. Append-only, never edited.
+- `item_state`: the current belief about each item. item_id (pk), state
+  (`"placed"` | `"carried"` | `"unknown"`), area_id (indexed), furniture, rel_pos_json,
+  last_placed_ts_ms, thumb_b64, spot_description (from Super VL), last_seen_ts_ms, confidence,
+  candidates_json (alternatives when ambiguous).
+- `events`: id (auto), item_id, type (`"placed"` | `"picked_up"` | `"moved"` | `"used"`), ts_ms,
+  from_json, to_json.
+- `routines`: item_id, hour (0 to 23), use_count. How often each item gets used at each hour of the
+  day.
+- `alerts`: id (auto), type, item_id (`""` if none), message, channel (`"spoken"` | `"carer"`),
+  ts_ms, sent (bool).
 
 ### Logic that must live in reducers (Spacetime track rule)
-- **Stationary rule:** an item counts as placed after N (start with 3) consecutive sightings with
-  `in_hand = false` in the same room and anchor (or bbox centre within a tolerance). Then update
-  `item_state` and write a `placed` event.
-- `in_hand = true` -> state "carried", update last_seen, do NOT overwrite last_placed.
-- Ambiguous sightings (item_id "") are stored but don't change item_state.
-- Stretch: scheduled reducer that fades confidence, and one that raises an alert if an important item
-  hasn't moved by a set time.
+- No hand detection. Movement decides, through `moves_with_background`:
+  - moves with the background = resting somewhere;
+  - fixed to the camera while the background moves = carried by the wearer.
+- **Placed:** still with the room for several frames (`STATIONARY_FRAMES`), committed only after the
+  wearer has moved away. Update `item_state`, write a `placed` event.
+- **Carried:** fixed to the camera for about 2 s. State `"carried"`; don't overwrite the last placed
+  spot. Write a `picked_up` event.
+- **Used:** an important item is carried, then put down again. Write a `used` event and add one to
+  `routines` for that hour.
+- **Moved:** the item turns up somewhere new without having been carried by the wearer. Write a
+  `moved` event.
+- **Not seen is not moved,** unless its spot was clearly in view.
+- **Small DINOv2 margin:** store both candidates in the sighting, change neither item's state.
 
-### Lookups the agent and app use
-- `where_is(item_id)`: item_state row plus the last few sightings. Can be a reducer that writes to a
-  `queries` table, or the agent reads item_state via SQL / subscription. Check Spacetime docs for the
-  cleanest way to read from Python (SQL endpoint).
+### Still to define (by build step)
+- Step 6: how the Super VL spot description gets written into `item_state`.
+- Step 7: how the outdoor check and the fall check reach Spacetime and raise `alerts`.
+- Step 8: how reminders are picked from `routines` and queued for `GET /say`.
 
-## 4. Agent tools (Nemotron, OpenAI-style function calling)
+## 4. Agent tools (Nemotron 3.5 Lightning, OpenAI-style function calling)
 
-- `resolve_item(name)` -> item_id or a clarifying question (aliases: "specs", "clicker")
-- `where_is(item_id)` -> location, time, confidence, snapshot
-- `sighting_history(item_id, since)` -> recent sightings
-- `coverage_gaps(since)` -> times the device wasn't recording
-- `describe_snapshot(item_id)` -> Nemotron VL description of the last snapshot
-- `notify_carer(message)` -> writes to `alerts`, shows in the app
-- `speak(text)` -> TTS
+- `find_item(name)` -> item_id, using names and aliases, or a clarifying question if it's ambiguous.
+- `where_is(item_id)` -> area, furniture, position, time, confidence.
+- `item_history(item_id, since)` -> recent events and sightings.
+- `look_at_snapshot(item_id)` -> Nemotron 3.5 Super VL looks at the latest snapshot, to double-check
+  a location or confirm a fall.
+- `send_carer_alert(message)` -> sends an iMessage/SMS through Photon (Spectrum TypeScript SDK) and
+  writes the row to `alerts`. One way only.
 
-## 5. Environment variables (see .env.example)
+## 5. Alerts
+
+- **Spoken to the wearer** (through `GET /say`): reminders, e.g. around the usual pill time.
+- **Texted to the carer** (through Photon):
+  - left the house (Super VL outdoor check, once a minute);
+  - pills not taken by the usual time;
+  - possible fall: a jolt, then black or a fixed floor/ceiling view for 30 to 60 s, confirmed by
+    Super VL;
+  - no activity for hours during the daytime.
+
+## 6. Environment variables (see .env.example)
 
 All URLs and keys come from `.env`. Nothing hardcoded.
