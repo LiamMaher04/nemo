@@ -44,6 +44,8 @@ VOICES_DIR: Path = REPO_ROOT / "data" / "voices"
 ELEVENLABS_API_KEY: str = _clean(os.getenv("ELEVENLABS_API_KEY"), "")
 ELEVENLABS_VOICE_ID: str = _clean(os.getenv("ELEVENLABS_VOICE_ID"), "")
 
+NEMO_URL: str = _clean(os.getenv("NEMO_URL"), "").rstrip("/")  # Nemo's base address, e.g. http://172.20.10.9
+
 FRAME_SOURCE: str = _clean(os.getenv("FRAME_SOURCE"), "post").lower()  # "post" | "pull"
 NEMO_JPG_URL: str = _clean(os.getenv("NEMO_JPG_URL"), "")  # e.g. http://172.20.10.9/jpg, for "pull"
 

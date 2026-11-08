@@ -102,8 +102,25 @@ def load() -> None:
 
 # ---- Speech to text ----
 
+NORMALISE_PEAK = 0.9  # scale quiet recordings so their loudest sample is about this
+NORMALISE_MAX_GAIN = 30.0  # never boost more than this
+NORMALISE_SILENCE = 0.001  # below this peak it's silence: leave it, don't boost noise
+
+
+def normalise(samples: np.ndarray) -> np.ndarray:
+    """Peak-normalise for speech to text only. Nemo's mic is quiet (about 8x too quiet to hear)."""
+    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
+    if peak < NORMALISE_SILENCE:
+        log.info("normalise: peak %.4f, too quiet to be speech, no gain applied", peak)
+        return samples
+    gain = min(NORMALISE_PEAK / peak, NORMALISE_MAX_GAIN)
+    log.info("normalise: peak %.4f, gain %.1fx", peak, gain)
+    return (samples * gain).astype(np.float32)
+
+
 def transcribe(wav: bytes) -> str:
-    segments, _ = load_whisper().transcribe(wav_to_float(wav), language="en", beam_size=1, vad_filter=True)
+    samples = normalise(wav_to_float(wav))
+    segments, _ = load_whisper().transcribe(samples, language="en", beam_size=1, vad_filter=True)
     return " ".join(s.text.strip() for s in segments).strip()
 
 

@@ -155,24 +155,28 @@ async def ask(request: Request) -> Response:
         raise HTTPException(status_code=400, detail="Body is not a WAV")
 
     t0 = time.perf_counter()
+    frames.answering.set()  # pause vision so speech to text and the agent get the CPU
     try:
-        question = await run_in_threadpool(speech.transcribe, body)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"could not read the audio: {exc}")
-    t1 = time.perf_counter()
-
-    if not question:
-        answer = NOT_HEARD
-    else:
         try:
-            answer = (await run_in_threadpool(agent.ask, question))["answer"]
-        except Exception as exc:  # still say something out loud rather than go silent
-            log.error("agent failed: %s", exc)
-            answer = CANT_ANSWER
-    t2 = time.perf_counter()
+            question = await run_in_threadpool(speech.transcribe, body)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"could not read the audio: {exc}")
+        t1 = time.perf_counter()
 
-    wav, voice = await run_in_threadpool(speech.speak, answer)
-    t3 = time.perf_counter()
+        if not question:
+            answer = NOT_HEARD
+        else:
+            try:
+                answer = (await run_in_threadpool(agent.ask, question))["answer"]
+            except Exception as exc:  # still say something out loud rather than go silent
+                log.error("agent failed: %s", exc)
+                answer = CANT_ANSWER
+        t2 = time.perf_counter()
+
+        wav, voice = await run_in_threadpool(speech.speak, answer)
+        t3 = time.perf_counter()
+    finally:
+        frames.answering.clear()
 
     log.info(
         "ask from %s: stt %.0f ms, agent %.0f ms, tts %.0f ms (%s), total %.0f ms | Q=%r A=%r",

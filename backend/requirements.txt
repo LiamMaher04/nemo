@@ -7,3 +7,5 @@ faster-whisper==1.2.1
 piper-tts==1.8.0
 scipy==1.17.1
 numpy==2.4.6
+requests==2.34.2
+pynput==1.8.2

@@ -37,7 +37,9 @@ Both go through the same handler (`backend/frames.py`):
 - Body: raw audio. `audio/wav`, 16 kHz, mono, 16-bit PCM. (Other rates or stereo are converted.)
 - Headers: `X-Device-Id`.
 - Backend (`backend/speech.py`, models loaded once at startup):
-  - speech to text: faster-whisper, `STT_MODEL` (default `small.en`), on CPU, int8;
+  - speech to text: faster-whisper, `STT_MODEL` (default `small.en`), on CPU, int8. The audio is
+    peak-normalised first (loudest sample to about 0.9, at most 30x gain, nothing if the peak is
+    under 0.001), because Nemo's mic is quiet. Only for speech to text, never for what's played;
   - the same agent as `/ask_text`;
   - text to speech, by `TTS_PROVIDER`: `local` = Piper (`PIPER_VOICE`, files in `data/voices/`,
     offline, no key), `elevenlabs` = `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID`, model
@@ -58,11 +60,24 @@ Both go through the same handler (`backend/frames.py`):
 - Response: `200 {"answer": "...", "tool_calls": [{"name", "args", "result", "ms"}, ...]}`.
   `503` if no model provider could answer.
 
-### GET /say
-- The device polls this every few seconds for anything to say (reminders).
-- Headers: `X-Device-Id`.
-- Response: `200`, `Content-Type: audio/wav` if there's something to play, otherwise `204` with no
-  body.
+### Nemo's own endpoints (device side, served by the board)
+Nemo runs a small web server on its own IP (`NEMO_URL`, e.g. `http://172.20.10.9`, shown on the
+OLED). Firmware: `firmware/tests/camera_blink_audio` (Laura).
+
+| endpoint | what it does |
+|---|---|
+| `GET /jpg` | the current camera frame as a JPEG. `503` while Nemo is recording: the backend's pull loop skips that second quietly. |
+| `GET /rec/start` | start recording the mic (up to 15 s). |
+| `GET /rec/stop` | stop, and return the recording as a WAV: 16 kHz, mono, 16-bit. |
+| `POST /play` | multipart form, field `file` = a WAV (16 kHz mono 16-bit, up to 15 s): Nemo speaks it. Answers once playback has finished. |
+| `GET /play_last` | play the last recording back (mic + speaker echo test, with 8x gain). |
+
+**Asking (the button):** the firmware button will POST its recording straight to `/ask` and play
+the reply. Until that lands, `backend/talk_bridge.py` stands in for it on the laptop: hold SPACE
+-> `/rec/start`, release -> `/rec/stop` -> `POST /ask` -> `POST {NEMO_URL}/play` with the reply.
+
+**Spoken reminders:** the backend will POST a WAV to Nemo's `/play` when there's something to say.
+This replaces the earlier plan of Nemo polling `GET /say` (not built).
 
 The OLED only ever shows eyes (awake when on, closed when off). Nothing from the backend goes on it.
 
@@ -196,15 +211,25 @@ time. A `used` event's `from_json` is `{"missing_since_ts"}` and `to_json` is th
 ### Still to define (by build step)
 - Step 6: how the Super VL spot description gets written into `item_state`.
 - Step 7: how the outdoor check and the fall check reach Spacetime and raise `alerts`.
-- Step 8: how reminders are picked from `routines` and queued for `GET /say`.
+- Step 8: how reminders are picked from `routines` and sent to Nemo's `/play`.
 
 ## 4. Agent tools (Nemotron 3.5 Lightning, OpenAI-style function calling)
 
 Built so far (`backend/agent.py`, max 5 model calls per question, thinking off, NVIDIA API first
 then OpenRouter):
 
-- `find_item(name)` -> `{"item_id", "name"}`, or `{"candidates": [...]}` if several match, or
-  `{"found": false, "tracked_items": [...]}`. Matches items.name, item_id, aliases, then attributes.
+- `find_item(name)` -> `{"item_id", "name", "where"}`, where `where` is the `where_is` result for
+  that item (so a plain "where's my X?" needs one tool call, not two), or `{"candidates": [...]}` if
+  several match, or `{"found": false, "tracked_items": [...]}`. Matches items.name, item_id,
+  aliases, then attributes.
+
+Guardrails (system prompt): Nemo only answers from its tools. It never invents names, family,
+health, places or times, says it's a device with no family or life of its own, and answers
+anything outside finding things with "I'm sorry, I can't help with that. I can help you find your
+things, like your keys or glasses."
+
+`/ask` pauses vision (new frames are skipped) while it's answering, so speech to text and the agent
+get the CPU.
 - `where_is(item_id)` -> `{"tracked": true, "seen": false, "note"}` for a tracked item Nemo hasn't
   spotted yet (answer "I haven't seen your keys yet", not "I don't keep track of that"), or spot (a
   ready-to-say phrase such as "on the sofa by the couch"), area name, furniture, spot_description,
@@ -274,7 +299,7 @@ alert it gave up on stays unsent, which blocks new alerts of that type until it'
 
 ### Still to build
 
-- **Spoken to the wearer** (through `GET /say`): reminders, e.g. around the usual pill time.
+- **Spoken to the wearer** (the backend POSTs a WAV to Nemo's `/play`): reminders, e.g. around the usual pill time.
 - **Texted to the carer** (through Photon):
   - left the house (Super VL outdoor check, once a minute);
   - possible fall: a jolt, then black or a fixed floor/ceiling view for 30 to 60 s, confirmed by

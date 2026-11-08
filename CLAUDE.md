@@ -49,7 +49,8 @@ Agent tools: `find_item`, `where_is`, `item_history`, `look_at_snapshot` (Super 
 Nemo device (ESP32-S3 camera, Arduino)
   | captures ~5-10 frames/s, sends the sharpest each second (1024 px+), POST /frame
   | hold button: records 16 kHz mono WAV, POST /ask, plays the WAV it gets back
-  | polls the backend every few seconds for anything to say (reminders)
+  |   (until the firmware button lands, backend/talk_bridge.py does this from the laptop)
+  | reminders: the backend POSTs a WAV to Nemo's /play
   v
 backend/ (Python, FastAPI, on the laptop)
   drop blurry and near-duplicate frames -> YOLOE (items + furniture) -> DINOv2 (area, look-alikes)

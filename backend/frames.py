@@ -23,6 +23,8 @@ from backend import spacetime_client as st
 log = logging.getLogger("nemo.frames")
 
 _busy = threading.Lock()
+# Set while /ask is answering: new frames are skipped so speech to text gets the whole CPU.
+answering = threading.Event()
 _vision_ms: deque[float] = deque(maxlen=20)  # process() time of the last 20 processed frames
 history: deque[dict] = deque(maxlen=200)  # per processed frame: frame_id, kept, vision_ms, spacetime_ms
 _next_frame_id = 0
@@ -62,6 +64,9 @@ def warm_up() -> None:
 def handle(jpeg: bytes) -> dict[str, Any]:
     """Process one frame if nothing else is being processed. Never raises."""
     global _next_frame_id
+    if answering.is_set():
+        stats["skipped_busy"] += 1
+        return {"skipped": "answering"}
     if not _busy.acquire(blocking=False):
         stats["skipped_busy"] += 1
         return {"skipped": "busy"}
@@ -119,8 +124,11 @@ async def pull_loop() -> None:
             started = time.monotonic()
             try:
                 r = await client.get(settings.NEMO_JPG_URL)
-                if r.status_code == 200 and r.content.startswith(b"\xff\xd8"):
-                    if _busy.locked():
+                if r.status_code == 503:
+                    # Nemo answers 503 while it's recording (button held): skip this second quietly.
+                    log.debug("GET %s -> 503 (Nemo busy recording), skipping", settings.NEMO_JPG_URL)
+                elif r.status_code == 200 and r.content.startswith(b"\xff\xd8"):
+                    if _busy.locked() or answering.is_set():
                         stats["skipped_busy"] += 1
                     else:
                         await asyncio.to_thread(handle, r.content)
