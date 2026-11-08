@@ -116,6 +116,38 @@ slow (the GPU warms up).
 
 On macOS the terminal needs camera permission (System Settings > Privacy & Security > Camera).
 
+## Review saved frames
+
+```
+python -m backend.vision.review backend/vision/captures/      # then open http://127.0.0.1:8765
+```
+
+A plain local page (Python's built-in `http.server`, listening on 127.0.0.1 only, so photos never
+leave the laptop). It shows one saved frame at a time with the item boxes (white = not reviewed,
+green = correct, red = wrong, dashed = ambiguous) and furniture boxes (blue), plus the area guess.
+
+| key | |
+|---|---|
+| ← → | previous / next frame |
+| Tab, Shift+Tab | next / previous detection |
+| C, X | correct, wrong |
+| R | save the detection's crop (10% padding, like DINOv2's live crops) as a reference in `REFS_DIR/items/<item_id>/`; for an ambiguous detection it asks which item |
+| / | comment box (Esc leaves it) |
+
+The "Missed in this frame" buttons record that an item was in view but not found. Everything
+is saved to `review.json` in the frames folder as you go:
+
+```json
+{"version": 1,
+ "frames": {"20261108-013502_000042": {"detections": {"0": "correct"}, "missed": ["keys"],
+                                       "comment": "...", "updated_ts_ms": 1794117333363.6}},
+ "refs_added": [{"kind": "item", "id": "tv_remote", "from": "20261108-013502_000042", "det": 0, "path": "..."}]}
+```
+
+The frames folder and `REFS_DIR/items` must be gitignored, or it refuses to start. It only
+answers requests for its own address and page (other `Host` or `Origin` headers, non-JSON posts
+and file paths outside the frame list are refused).
+
 ## Settings (repo-root `.env`)
 
 | name | default | meaning |

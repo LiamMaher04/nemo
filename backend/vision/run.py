@@ -146,6 +146,13 @@ def draw(jpeg_bytes: bytes, result: VisionResult) -> np.ndarray:
 
 def check_save_dir(save_dir: Path) -> Path:
     """Create the --save folder. Inside the repo it must be gitignored (photos of our rooms)."""
+    save_dir = require_gitignored(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    return save_dir
+
+
+def require_gitignored(save_dir: Path) -> Path:
+    """Stop unless a folder is outside the repo or gitignored for both JPEG and JSON files."""
     save_dir = save_dir.expanduser().resolve()
     if save_dir.is_relative_to(settings.REPO_ROOT):
         # Probe a JPEG and a JSON: a folder only covered by "*.jpg" would still commit the JSONs.
@@ -155,7 +162,6 @@ def check_save_dir(save_dir: Path) -> Path:
         if len(out.splitlines()) != len(probes):
             raise SystemExit(f"{save_dir} is inside the repo but not gitignored. "
                              "Use e.g. backend/vision/captures/ (ignored) or a folder outside the repo.")
-    save_dir.mkdir(parents=True, exist_ok=True)
     return save_dir
 
 

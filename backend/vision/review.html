@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nemo frame review</title>
+<style>
+  body { margin: 0; font: 14px system-ui, sans-serif; background: #1d1d1f; color: #eee; display: flex; height: 100vh; }
+  #view { flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; }
+  canvas { max-width: 100%; max-height: 100vh; }
+  #side { width: 340px; padding: 12px; overflow-y: auto; background: #2a2a2d; box-sizing: border-box; }
+  h2 { font-size: 15px; margin: 14px 0 6px; }
+  .det { padding: 6px; margin: 4px 0; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
+  .det.sel { border-color: #ffd60a; background: #3a3a1d; }
+  .correct { color: #30d158; } .wrong { color: #ff453a; } .none { color: #aaa; }
+  button { margin: 2px; padding: 4px 8px; background: #3a3a3d; color: #eee; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  button.on { background: #ff453a; border-color: #ff453a; }
+  textarea { width: 100%; height: 70px; box-sizing: border-box; background: #1d1d1f; color: #eee; border: 1px solid #555; }
+  .small { font-size: 12px; color: #aaa; }
+  #status { margin-top: 8px; font-size: 12px; color: #aaa; }
+</style>
+</head>
+<body>
+<div id="view"><canvas id="c"></canvas></div>
+<div id="side">
+  <div id="where"></div>
+  <div class="small">keys: &larr; &rarr; frames &middot; Tab detections &middot; C correct &middot; X wrong &middot; R crop as reference &middot; / comment</div>
+  <h2>Detections</h2><div id="dets"></div>
+  <h2>Missed in this frame</h2><div id="missed"></div>
+  <h2>Comment</h2><textarea id="comment" placeholder="Anything about this frame"></textarea>
+  <div id="status"></div>
+  <div id="refmsg" class="small"></div>
+</div>
+<script>
+let frames = [], review = {frames: {}}, itemIds = [], idx = 0, sel = 0;
+const img = new Image(), c = document.getElementById("c"), ctx = c.getContext("2d");
+const $ = id => document.getElementById(id);
+
+function rec(stem) {
+  return review.frames[stem] || (review.frames[stem] = {detections: {}, missed: [], comment: ""});
+}
+function status(msg) { $("status").textContent = msg; }
+
+async function post(url, body) {
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.status);
+  return data;
+}
+async function saveFrame() {
+  const f = frames[idx], r = rec(f.stem);
+  try { await post("/api/review", {stem: f.stem, ...r}); status("saved " + new Date().toLocaleTimeString()); }
+  catch (e) { status("NOT SAVED: " + e.message); }
+}
+
+function draw() {
+  const f = frames[idx];
+  c.width = f.width; c.height = f.height;
+  ctx.drawImage(img, 0, 0);
+  const lw = Math.max(2, f.width / 600), font = Math.max(14, f.width / 70);
+  ctx.font = `${font}px system-ui`;
+  for (const fu of f.furniture) {
+    const [x, y, w, h] = fu.bbox;
+    ctx.strokeStyle = "#0a84ff"; ctx.lineWidth = lw; ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = "#0a84ff"; ctx.fillText(`${fu.name} ${fu.conf.toFixed(2)}`, x + 4, y + font);
+  }
+  const v = rec(f.stem).detections;
+  f.items.forEach((it, i) => {
+    const [x, y, w, h] = it.bbox;
+    const colour = v[i] === "correct" ? "#30d158" : v[i] === "wrong" ? "#ff453a" : "#ffffff";
+    ctx.strokeStyle = colour; ctx.lineWidth = i === sel ? lw * 3 : lw;
+    ctx.setLineDash(it.item_id ? [] : [lw * 4, lw * 3]);  // dashed = ambiguous
+    ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+    ctx.fillStyle = colour;
+    ctx.fillText(`${i}: ${it.item_id || "?"} ${it.det_conf.toFixed(2)}`, x, Math.max(font, y - 6));
+  });
+}
+
+function panel() {
+  const f = frames[idx], r = rec(f.stem), a = f.area;
+  const label = f.area_label ? ` (label: ${f.area_label})` : "";
+  $("where").innerHTML = `<b>Frame ${idx + 1} / ${frames.length}</b><br><span class="small">${f.image}</span><br>` +
+    `area: <b>${a.area_id || "-"}</b> conf ${a.area_conf.toFixed(2)}${label}<br>` +
+    `<span class="small">this frame: best ${a.best || "-"} ${a.best_sim.toFixed(3)}, next ${a.next_sim.toFixed(3)}, ` +
+    `vote ${a.vote || "none"} &middot; sharpness ${f.sharpness.toFixed(0)}</span>`;
+  $("dets").innerHTML = f.items.length ? "" : '<span class="small">none</span>';
+  f.items.forEach((it, i) => {
+    const v = r.detections[i] || "none";
+    const d = document.createElement("div");
+    d.className = "det" + (i === sel ? " sel" : "");
+    d.innerHTML = `<b>${i}: ${it.item_id || "? (ambiguous)"}</b> <span class="${v}">${v === "none" ? "not reviewed" : v}</span><br>` +
+      `<span class="small">"${it.label}" ${it.det_conf.toFixed(2)} &middot; ${it.matched_by} &middot; margin ${it.match_margin.toFixed(3)}<br>` +
+      `candidates ${it.candidates.map(([id, s]) => `${id} ${s.toFixed(3)}`).join(", ")}<br>` +
+      `furniture ${it.furniture || "-"}</span>`;
+    d.onclick = () => { sel = i; show(); };
+    $("dets").appendChild(d);
+  });
+  $("missed").innerHTML = "";
+  for (const id of itemIds) {
+    const b = document.createElement("button");
+    b.textContent = id; b.className = r.missed.includes(id) ? "on" : "";
+    b.onclick = () => {
+      r.missed = r.missed.includes(id) ? r.missed.filter(m => m !== id) : [...r.missed, id];
+      saveFrame(); panel();
+    };
+    $("missed").appendChild(b);
+  }
+  $("comment").value = r.comment || "";
+}
+
+function show() { panel(); if (img.complete && img.dataset.stem === frames[idx].stem) draw(); }
+function go(i) {
+  idx = Math.max(0, Math.min(frames.length - 1, i)); sel = 0;
+  img.dataset.stem = frames[idx].stem; img.src = "/img/" + encodeURIComponent(frames[idx].stem);
+  panel(); status("");
+}
+img.onload = draw;
+
+function verdict(v) {
+  const f = frames[idx];
+  if (!f.items.length) return;
+  rec(f.stem).detections[sel] = v;
+  saveFrame(); show();
+}
+async function cropAsRef() {
+  const f = frames[idx], it = f.items[sel];
+  if (!it) return;
+  let id = it.item_id;
+  if (!id) {  // ambiguous: ask which item it really is
+    id = prompt(`Which item is this? One of: ${itemIds.join(", ")}`, it.candidates.length ? it.candidates[0][0] : "");
+    if (!id) return;
+  }
+  try { const r = await post("/api/ref_item", {stem: f.stem, det: sel, item_id: id}); $("refmsg").textContent = "reference saved: " + r.path; }
+  catch (e) { $("refmsg").textContent = "REFERENCE NOT SAVED: " + e.message; }
+}
+
+let commentTimer = null;
+$("comment").addEventListener("input", () => {
+  rec(frames[idx].stem).comment = $("comment").value;
+  clearTimeout(commentTimer); commentTimer = setTimeout(saveFrame, 400);
+});
+
+document.addEventListener("keydown", e => {
+  if (e.target === $("comment")) {
+    if (e.key === "Escape") $("comment").blur();
+    return;
+  }
+  const f = frames[idx];
+  if (e.key === "ArrowRight") go(idx + 1);
+  else if (e.key === "ArrowLeft") go(idx - 1);
+  else if (e.key === "Tab") {
+    e.preventDefault();
+    if (f.items.length) { sel = (sel + (e.shiftKey ? -1 : 1) + f.items.length) % f.items.length; show(); }
+  }
+  else if (e.key === "c" || e.key === "C") verdict("correct");
+  else if (e.key === "x" || e.key === "X") verdict("wrong");
+  else if (e.key === "r" || e.key === "R") cropAsRef();
+  else if (e.key === "/") { e.preventDefault(); $("comment").focus(); }
+});
+
+fetch("/api/frames").then(r => r.json()).then(d => {
+  frames = d.frames; review = d.review; itemIds = d.item_ids;
+  go(0);
+});
+</script>
+</body>
+</html>
