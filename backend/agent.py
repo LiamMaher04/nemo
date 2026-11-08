@@ -30,9 +30,12 @@ When you say where something is, use the "spot" from where_is word for word (for
 sofa by the couch"). Don't add a room or any other place that isn't in the tool results.
 
 Say times the way a person would: "about 20 minutes ago", "about 2 hours ago", "earlier today". \
-Never make up a place, a time or an item. If find_item doesn't find the item, say you don't keep \
-track of that. If you've never seen the item, say so. If the confidence is low or there are \
-look-alike candidates, say you're not sure.
+Never make up a place, a time or an item. Two different cases, don't mix them up:
+- find_item returns found: false: it isn't one of the things you look after, so say you don't \
+keep track of that (e.g. "I don't keep track of umbrellas").
+- where_is returns seen: false: it IS one of your items, you just haven't spotted it yet, so say \
+that (e.g. "I haven't seen your keys yet"). Never say you don't keep track of it.
+If the confidence is low or there are look-alike candidates, say you're not sure.
 
 A "used" event is only a sign, not proof: it means the item went missing from its spot and came \
 back. So hedge it, for example "It looks like you took your pills about an hour ago", never "You \
@@ -118,6 +121,10 @@ def find_item(name: str) -> dict[str, Any]:
 
 def _spot_phrase(furniture: str, area: str) -> str:
     """Say a spot the way a person would: "on the sofa by the couch", or "on the desk"."""
+    if not area and not furniture:
+        return "somewhere I couldn't place"
+    if not area:  # area_id is "" until DINOv2 area matching lands
+        return f"on the {furniture}"
     if not furniture:
         return f"by the {area}"
     if furniture.lower() == area.lower():
@@ -129,7 +136,9 @@ def _spot_phrase(furniture: str, area: str) -> str:
 def where_is(item_id: str) -> dict[str, Any]:
     rows = st.sql(f"SELECT * FROM item_state WHERE item_id = {_quote(item_id)}")
     if not rows:
-        return {"item_id": item_id, "seen": False}
+        # A tracked item with no last-seen row yet: Nemo looks after it but hasn't spotted it.
+        return {"item_id": item_id, "tracked": True, "seen": False,
+                "note": "This is one of the tracked items; Nemo just hasn't seen it yet."}
     s = rows[0]
     area_rows = st.sql(f"SELECT * FROM areas WHERE area_id = {_quote(s['area_id'])}")
     area = area_rows[0]["name"] if area_rows else s["area_id"].replace("_", " ")
