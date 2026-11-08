@@ -9,13 +9,13 @@ import logging
 
 from backend import spacetime_client
 
-# importance: 1 = everyday, 2 = often looked for, 3 = important (reminders and alerts can use it)
+# importance: 1 = everyday, 2 = often looked for, 3 = important (counts as "used", reminders)
 ITEMS = [
     {
         "item_id": "keys",
         "name": "keys",
         "category": "keys",
-        "importance": 3,
+        "importance": 2,
         "aliases": ["house keys", "car keys", "keyring", "key"],
         "attributes": {"detector_prompt": "house keys on keyring", "size": "small"},
     },
@@ -31,7 +31,7 @@ ITEMS = [
         "item_id": "phone",
         "name": "phone",
         "category": "phone",
-        "importance": 3,
+        "importance": 2,
         "aliases": ["mobile", "cell phone", "cellphone", "iphone"],
         "attributes": {"detector_prompt": "cell phone", "size": "small"},
     },
@@ -47,7 +47,7 @@ ITEMS = [
         "item_id": "wallet",
         "name": "wallet",
         "category": "wallet",
-        "importance": 3,
+        "importance": 2,
         "aliases": ["purse", "billfold", "cards"],
         "attributes": {"detector_prompt": "wallet", "size": "small"},
     },
@@ -61,16 +61,16 @@ ITEMS = [
     },
 ]
 
-# Rooms are a first guess for the hotel and demo room; change them here and re-run.
+# Every hotel area is in the hotel room; the demo table is in the demo room.
 AREAS = [
-    ("couch", "couch", "living room"),
-    ("desk", "desk", "living room"),
-    ("bed_1", "bed 1", "bedroom"),
-    ("bed_2", "bed 2", "bedroom"),
-    ("tv_area", "TV area", "living room"),
-    ("cupboard_corner", "cupboard corner", "living room"),
-    ("closet", "closet", "bedroom"),
-    ("bathroom", "bathroom", "bathroom"),
+    ("couch", "couch", "hotel room"),
+    ("desk", "desk", "hotel room"),
+    ("bed_1", "bed 1", "hotel room"),
+    ("bed_2", "bed 2", "hotel room"),
+    ("tv_area", "TV area", "hotel room"),
+    ("cupboard_corner", "cupboard corner", "hotel room"),
+    ("closet", "closet", "hotel room"),
+    ("bathroom", "bathroom", "hotel room"),
     ("demo_table", "demo table", "demo room"),
 ]
 

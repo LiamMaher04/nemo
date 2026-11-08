@@ -63,6 +63,10 @@ Furniture is only ever a place, never an item: it fills `furniture`, never `item
 - `upsert_item(item_id, name, category, importance, aliases, attributes_json)`
 - `upsert_area(area_id, name, room)`
 
+### reset_memory()
+Clears `sightings`, `item_state`, `events`, `routines`, `alerts` and `tracking`. Keeps `items` and
+`areas`. For between demo runs.
+
 ## 3. Spacetime tables
 
 - `items`: item_id (pk), name, category, importance, aliases (list of strings), attributes (JSON).
@@ -79,21 +83,49 @@ Furniture is only ever a place, never an item: it fills `furniture`, never `item
   day.
 - `alerts`: id (auto), type, item_id (`""` if none), message, channel (`"spoken"` | `"carer"`),
   ts_ms, sent (bool).
+- `tracking` (**private**, not public): the rules' working memory between sightings, one row per
+  item. item_id (pk), streak_count, streak_first_ts_ms, streak_area_id, streak_furniture,
+  streak_first_cx, streak_first_cy (bbox centre at the start of the streak), streak_moved_px
+  (furthest the bbox centre has moved during the streak), carried_since_ts_ms (optional),
+  was_carried_since_last_placed (bool).
+
+`item_state` rows are created with state `"unknown"` the first time an item is identified.
+Event `from_json` / `to_json` are `{"area_id", "furniture", "rel_pos"}`, `""` when there was no
+earlier spot, and `{"state": "carried"}` as the `to_json` of `picked_up`.
+
+### Constants (top of the module)
+| name | value | meaning |
+|---|---|---|
+| STATIONARY_FRAMES | 3 | resting sightings in the same spot before "placed" can commit |
+| RESTING | 0.7 | `moves_with_background` at or above this = resting with the room |
+| CARRIED | 0.3 | `moves_with_background` at or below this = carried |
+| CARRIED_MIN_MS | 2000 | carried this long before it counts as picked up |
+| CAMERA_MOVED_PX | 60 | bbox centre shift during a streak that means the wearer moved |
+| LOCAL_UTC_OFFSET_HOURS | -6 | local hour for `routines` (Dallas, CST) |
 
 ### Logic that must live in reducers (Spacetime track rule)
-- No hand detection. Movement decides, through `moves_with_background`:
-  - moves with the background = resting somewhere;
-  - fixed to the camera while the background moves = carried by the wearer.
-- **Placed:** still with the room for several frames (`STATIONARY_FRAMES`), committed only after the
-  wearer has moved away. Update `item_state`, write a `placed` event.
-- **Carried:** fixed to the camera for about 2 s. State `"carried"`; don't overwrite the last placed
-  spot. Write a `picked_up` event.
-- **Used:** an important item is carried, then put down again. Write a `used` event and add one to
-  `routines` for that hour.
-- **Moved:** the item turns up somewhere new without having been carried by the wearer. Write a
-  `moved` event.
+`add_sighting` stores the raw sighting first, then:
+- **Ambiguous** (`item_id` `""`, e.g. a small DINOv2 margin): stop, change nothing.
+- Always update `last_seen_ts_ms` on `item_state` when the item is identified.
+- No hand detection. Movement decides, through `moves_with_background`.
+- **Carried** (`<= CARRIED`): start `carried_since_ts_ms` if not set. Once carried for
+  `CARRIED_MIN_MS`: state `"carried"`, set `was_carried_since_last_placed`, write one `picked_up`
+  event (not one per frame). Never overwrite the last placed spot. Reset the still streak.
+- **Resting** (`>= RESTING`): clear `carried_since_ts_ms`. Grow the still streak if it's the same
+  area and furniture, otherwise start a new one.
+- **Placed** commits when the streak has `STATIONARY_FRAMES` or more, AND (the bbox centre moved at
+  least `CAMERA_MOVED_PX` during the streak, meaning the camera moved but the item stayed with the
+  room, OR `furniture` isn't `""`), AND it isn't already placed in that same area and furniture.
+  Update `item_state` (state `"placed"`, area_id, furniture, rel_pos_json, last_placed_ts_ms,
+  thumb_b64, confidence = det_conf x area_conf, candidates_json), then write:
+  - carried since last placed: a `placed` event; if the item's importance is 3, also a **used**
+    event and +1 to `routines` for the local hour;
+  - not carried, and previously placed somewhere else: a **moved** event;
+  - otherwise (first time): a `placed` event.
+  Then reset `was_carried_since_last_placed`.
+- **In between** (between `CARRIED` and `RESTING`, e.g. held while sitting still): only
+  `last_seen_ts_ms` changes.
 - **Not seen is not moved,** unless its spot was clearly in view.
-- **Small DINOv2 margin:** store both candidates in the sighting, change neither item's state.
 
 ### Still to define (by build step)
 - Step 6: how the Super VL spot description gets written into `item_state`.
