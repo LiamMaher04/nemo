@@ -210,6 +210,8 @@ def warm_up() -> None:
         from backend.vision.pipeline import VisionResult  # noqa: F401
         try:
             h = httpx.get(f"{settings.VISION_URL}/health", timeout=5.0).json()
+            remote_health.clear()
+            remote_health.update(h)
             log.info("vision is REMOTE at %s: loaded=%s on %s%s, %d area and %d item reference folders "
                      "(next frame_id %d)", settings.VISION_URL, h.get("loaded"), h.get("device"),
                      f" ({h['gpu']})" if h.get("gpu") else "", len(h.get("area_refs", {})),
@@ -220,10 +222,36 @@ def warm_up() -> None:
         return
     with _busy:
         started = time.perf_counter()
-        from backend.vision import detector
-        detector.load()
+        from backend.vision import pipeline
+        pipeline.load()  # YOLOE, DINOv2 and the reference fingerprints, so the first frame isn't ~25 s
         _next_frame_id = _first_frame_id()
         log.info("vision ready in %.1f s (next frame_id %d)", time.perf_counter() - started, _next_frame_id)
+
+
+remote_health: dict[str, Any] = {}  # the vision server's /health at startup (VISION_URL set)
+
+
+def vision_status() -> dict[str, Any]:
+    """What /health reports about vision: models loaded, device, reference photos."""
+    import sys
+    if settings.VISION_URL:
+        h = remote_health
+        return {"ready": bool(h.get("loaded")), "yoloe": bool(h.get("loaded")), "dinov2": bool(h.get("loaded")),
+                "device": h.get("device"), "refs_dir": h.get("refs_dir"),
+                "area_refs": len(h.get("area_refs", {})), "item_refs": len(h.get("item_refs", {})),
+                "note": "from the vision server's /health at startup" if h else "vision server didn't answer"}
+    det = sys.modules.get("backend.vision.detector")
+    dino = sys.modules.get("backend.vision.dino")
+    areas = sys.modules.get("backend.vision.areas")
+    items = sys.modules.get("backend.vision.item_match")
+    from backend.vision import settings as vs
+    pipe = sys.modules.get("backend.vision.pipeline")
+    yoloe_ok = bool(det and det._model is not None)
+    dino_ok = bool(dino and dino._model is not None)
+    # Ready only once pipeline.load() has finished, reference fingerprints included.
+    return {"ready": bool(pipe and pipe._loaded), "yoloe": yoloe_ok, "dinov2": dino_ok,
+            "device": det._device if det else None, "refs_dir": str(vs.REFS_DIR),
+            "area_refs": len(areas._refs) if areas else 0, "item_refs": len(items._refs) if items else 0}
 
 
 def handle(jpeg: bytes) -> dict[str, Any]:

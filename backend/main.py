@@ -93,8 +93,27 @@ def health() -> dict:
         "seconds_since_last_frame": round(now - last_frame_at, 1) if last_frame_at else None,
         "last_device_id": last_device_id,
         "frame_source": settings.FRAME_SOURCE,
-        "vision": {**frames.vision_mode(), **frames.stats, "avg_vision_ms_last_20": frames.avg_vision_ms()},
+        "vision": {**frames.vision_mode(), **frames.vision_status(), **frames.stats,
+                   "avg_vision_ms_last_20": frames.avg_vision_ms()},
+        "super_vl": {"on": settings.SUPER_VL, "model": settings.NEMOTRON_VL_MODEL},
+        "agent_model": settings.NEMOTRON_AGENT_MODEL,
+        "tts_provider": settings.TTS_PROVIDER,
+        "speech_ready": speech_error is None,
+        "carer_alerts": settings.CARER_ALERTS,
+        "nemo": _nemo_status(),
     }
+
+
+def _nemo_status() -> dict:
+    """Whether Nemo answers at NEMO_URL (2 s timeout; skipped when NEMO_URL is empty)."""
+    if not settings.NEMO_URL:
+        return {"url": "", "reachable": None}
+    try:
+        import httpx
+        r = httpx.get(f"{settings.NEMO_URL}/jpg", timeout=2.0)
+        return {"url": settings.NEMO_URL, "reachable": True, "status": r.status_code}
+    except Exception as exc:
+        return {"url": settings.NEMO_URL, "reachable": False, "error": type(exc).__name__}
 
 
 @app.post("/frame")

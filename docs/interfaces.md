@@ -33,8 +33,15 @@ Both go through the same handler (`backend/frames.py`):
    never waits for it.
 - Only one frame is processed at a time. A frame that arrives while another is still being
   processed (or while YOLOE is loading at startup) is skipped, not queued.
-- Each frame logs vision time, Spacetime time and total. `GET /health` adds `frame_source` and
-  `vision` (processed, kept, dropped, skipped_busy, spacetime_errors, avg_vision_ms_last_20).
+- Each frame logs vision time, Spacetime time and total. `GET /health` adds `frame_source`,
+  `vision` (mode, url, ready = YOLOE, DINOv2 and the reference fingerprints all loaded, yoloe,
+  dinov2, device, refs_dir, area_refs and item_refs = folders loaded, then processed, kept,
+  dropped, skipped_busy, spacetime_errors, remote_errors, avg_vision_ms_last_20), `super_vl` (on,
+  model), `agent_model`, `tts_provider`, `speech_ready`, `carer_alerts`, and `nemo` (url, and
+  whether `GET {NEMO_URL}/jpg` answers within 2 s). With `VISION_URL` set, the vision fields come
+  from the vision server's `/health` at startup.
+- All of vision (YOLOE, DINOv2 and the reference fingerprints) loads at startup, so the first
+  frame isn't slow; frames that arrive while it loads are skipped.
 - `area_id` is `""` (and `area_conf` low) when DINOv2 can't tell the area from its reference
   photos (`REFS_DIR`); see `backend/vision/README.md`.
 
