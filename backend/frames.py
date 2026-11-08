@@ -37,6 +37,21 @@ latest: dict[str, Any] = {}
 _latest_lock = threading.Lock()
 
 
+def _furniture_boxes(result: Any) -> list[dict[str, Any]]:
+    """Josie's furniture_boxes as dicts. She has (name, wording, [x,y,w,h], conf); be tolerant of
+    the older (name, [x,y,w,h], conf) too, so a change there never breaks the live view."""
+    out = []
+    for t in getattr(result, "furniture_boxes", []) or []:
+        try:
+            name = t[0]
+            bbox = next(v for v in t if isinstance(v, (list, tuple)) and len(v) == 4)
+            conf = next((v for v in reversed(t) if isinstance(v, (int, float))), 0.0)
+            out.append({"name": name, "bbox": list(bbox), "conf": float(conf)})
+        except Exception:
+            continue
+    return out
+
+
 def _publish_latest(frame_id: int, ts_ms: float, jpeg: bytes, result: Any, spacetime_ms: float) -> None:
     sightings = [{k: v for k, v in s.items() if k != "thumb_b64"} for s in result.sightings]
     frame = result.frame or {}
@@ -51,14 +66,18 @@ def _publish_latest(frame_id: int, ts_ms: float, jpeg: bytes, result: Any, space
         "area_conf": frame.get("area_conf", 0.0),
         "items_seen": json.loads(frame["items_seen_json"]) if frame.get("items_seen_json") else [],
         "sightings": sightings,
-        "furniture": [{"name": n, "bbox": b, "conf": c} for n, b, c in result.furniture_boxes],
+        "furniture": _furniture_boxes(result),
         "vision_ms": round(result.ms),
+        "yoloe_ms": round(getattr(result, "yoloe_ms", 0) or 0),
+        "dino_ms": round(getattr(result, "dino_ms", 0) or 0),
         "spacetime_ms": round(spacetime_ms),
     }
     with _latest_lock:
         latest.clear()
         latest.update(snapshot)
         latest["jpeg"] = jpeg
+        if result.kept:
+            _latest_kept.update({"frame_id": frame_id, "ts_ms": ts_ms, "jpeg": jpeg})
 
 
 def _sharpness_gate() -> float:
@@ -80,6 +99,17 @@ def latest_jpeg() -> tuple[int, bytes] | None:
         if not latest:
             return None
         return latest["frame_id"], latest["jpeg"]
+
+
+_latest_kept: dict[str, Any] = {}
+
+
+def latest_kept() -> tuple[int, float, bytes] | None:
+    """The newest KEPT frame (frame_id, ts_ms, jpeg), for the scene check."""
+    with _latest_lock:
+        if not _latest_kept:
+            return None
+        return _latest_kept["frame_id"], _latest_kept["ts_ms"], _latest_kept["jpeg"]
 
 
 def _first_frame_id() -> int:
@@ -140,7 +170,10 @@ def handle(jpeg: bytes) -> dict[str, Any]:
             history.append({"frame_id": frame_id, "ts_ms": ts_ms, "kept": False, "reason": result.drop_reason,
                             "sharpness": round(result.sharpness, 1), "vision_ms": vision_ms, "spacetime_ms": 0.0,
                             "seen": []})
-            _publish_latest(frame_id, ts_ms, jpeg, result, 0.0)
+            try:
+                _publish_latest(frame_id, ts_ms, jpeg, result, 0.0)
+            except Exception as exc:  # the live view must never take the pipeline down
+                log.warning("live view snapshot failed: %s", exc)
             log.info("frame %d dropped (%s): vision %.0f ms", frame_id, result.drop_reason, vision_ms)
             return {"frame_id": frame_id, "kept": False, "reason": result.drop_reason}
 
@@ -163,7 +196,18 @@ def handle(jpeg: bytes) -> dict[str, Any]:
                         "sharpness": round(result.sharpness, 1), "vision_ms": vision_ms,
                         "spacetime_ms": spacetime_ms, "seen": seen_list,
                         "area_id": (result.frame or {}).get("area_id", "")})
-        _publish_latest(frame_id, ts_ms, jpeg, result, spacetime_ms)
+        try:
+            _publish_latest(frame_id, ts_ms, jpeg, result, spacetime_ms)
+        except Exception as exc:  # the live view must never take the pipeline down
+            log.warning("live view snapshot failed: %s", exc)
+
+        # Super VL, in the background: second opinions on unsure boxes, and a description of the
+        # spot for anything Spacetime just placed. Returns at once; the work happens on its own thread.
+        try:
+            from backend import vl
+            vl.after_frame(frame_id, ts_ms, jpeg, result.sightings)
+        except Exception as exc:
+            log.warning("super vl hook failed: %s", exc)
 
         seen = ", ".join(f"{s['item_id'] or '?'}@{s['furniture'] or '-'}" for s in result.sightings) or "nothing"
         log.info("frame %d kept: %s | vision %.0f ms, spacetime %.0f ms, total %.0f ms",

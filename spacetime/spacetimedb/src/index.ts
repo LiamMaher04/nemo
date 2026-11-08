@@ -26,6 +26,7 @@ const PILL_GRACE_MIN = 60; // minutes after the usual hour before "pills not tak
 const DAY_START_HOUR = 8; // local daytime window for no_activity
 const DAY_END_HOUR = 21;
 const NO_ACTIVITY_MIN = 180; // no placed/used event and no add_frame for this long = no_activity
+const OUTDOORS_MIN_MS = 120_000; // Super VL has said "outdoors" for this long = left the house
 
 // What can be tracked. Seeded for the demo.
 const items = table(
@@ -395,6 +396,32 @@ export const record_alert = spacetimedb.reducer(
   }
 );
 
+// Super VL's one-sentence description of where an item was put down. Only written if the item is
+// still at the placement it describes (placed_ts_ms matches), so a late answer can't label a new spot.
+export const set_spot_description = spacetimedb.reducer(
+  { item_id: t.string(), placed_ts_ms: t.f64(), description: t.string() },
+  (ctx, { item_id, placed_ts_ms, description }) => {
+    const row = ctx.db.item_state.item_id.find(item_id);
+    if (!row || Math.abs(row.last_placed_ts_ms - placed_ts_ms) >= 1) return;
+    ctx.db.item_state.item_id.update({ ...row, spot_description: description });
+  }
+);
+
+// Super VL's indoors/outdoors verdict for the latest kept frame (about once a minute).
+// outdoors_since is when the current outdoor stretch began (0 = indoors).
+export const set_scene = spacetimedb.reducer(
+  { ts_ms: t.f64(), outdoors: t.bool() },
+  (ctx, { ts_ms, outdoors }) => {
+    setStatus(ctx, 'scene_checked', ts_ms);
+    const since = ctx.db.status.key.find('outdoors_since')?.ts_ms ?? 0;
+    if (outdoors) {
+      if (since === 0) setStatus(ctx, 'outdoors_since', ts_ms);
+    } else if (since !== 0) {
+      setStatus(ctx, 'outdoors_since', 0);
+    }
+  }
+);
+
 // The backend calls this after it has texted (or failed to text) an alert raised below.
 export const mark_alert_sent = spacetimedb.reducer(
   { id: t.u64(), sent: t.bool() },
@@ -471,9 +498,23 @@ function checkNoActivity(ctx: Ctx, now_ms: number) {
   raiseCarerAlert(ctx, now_ms, 'no_activity', '', `No activity seen for about ${hours} hour${hours === 1 ? '' : 's'}.`);
 }
 
+function checkLeftHouse(ctx: Ctx, now_ms: number) {
+  const since = ctx.db.status.key.find('outdoors_since')?.ts_ms ?? 0;
+  if (since === 0 || now_ms - since < OUTDOORS_MIN_MS) return;
+  const minutes = Math.max(1, Math.round((now_ms - since) / 60_000));
+  raiseCarerAlert(
+    ctx,
+    now_ms,
+    'left_house',
+    '',
+    `It looks like they've left the house (outdoors for about ${minutes} minute${minutes === 1 ? '' : 's'}).`
+  );
+}
+
 function runAlertChecks(ctx: Ctx, now_ms: number) {
   checkPills(ctx, now_ms);
   checkNoActivity(ctx, now_ms);
+  checkLeftHouse(ctx, now_ms);
 }
 
 function serverNowMs(ctx: Ctx): number {

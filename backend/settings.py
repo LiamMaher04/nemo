@@ -28,9 +28,19 @@ NEMOTRON_BASE_URL: str = _clean(os.getenv("NEMOTRON_BASE_URL"), "https://integra
 NEMOTRON_API_KEY: str = _clean(os.getenv("NEMOTRON_API_KEY"), "")
 NEMOTRON_AGENT_MODEL: str = _clean(os.getenv("NEMOTRON_AGENT_MODEL"), "nvidia/nemotron-3.5-lightning-30b-a3b")
 
+NEMOTRON_VL_MODEL: str = _clean(os.getenv("NEMOTRON_VL_MODEL"), "nvidia/nemotron-3.5-super-vl-120b-a12b")
+
 OPENROUTER_BASE_URL: str = _clean(os.getenv("OPENROUTER_BASE_URL"), "https://openrouter.ai/api/v1")
 OPENROUTER_API_KEY: str = _clean(os.getenv("OPENROUTER_API_KEY"), "")
 OPENROUTER_MODEL: str = _clean(os.getenv("OPENROUTER_MODEL"), "nvidia/nemotron-3.5-lightning:free")
+OPENROUTER_VL_MODEL: str = _clean(os.getenv("OPENROUTER_VL_MODEL"), "nvidia/nemotron-3.5-super-vl:free")
+
+# Super VL (see backend/vl.py). SUPER_VL=off turns every use of it off.
+SUPER_VL: bool = _clean(os.getenv("SUPER_VL"), "on").lower() not in ("off", "false", "0", "no")
+VL_SECOND_OPINION: bool = _clean(os.getenv("VL_SECOND_OPINION"), "on").lower() not in ("off", "false", "0", "no")
+VL_SCENE_CHECK: bool = _clean(os.getenv("VL_SCENE_CHECK"), "on").lower() not in ("off", "false", "0", "no")
+VL_SCENE_EVERY_S: int = int(_clean(os.getenv("VL_SCENE_EVERY_S"), "60"))
+VL_TIMEOUT_S: float = float(_clean(os.getenv("VL_TIMEOUT_S"), "12"))
 
 NOTIFIER_PORT: int = int(_clean(os.getenv("NOTIFIER_PORT"), "8100"))
 NOTIFIER_URL: str = f"http://127.0.0.1:{NOTIFIER_PORT}"

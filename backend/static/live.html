@@ -253,6 +253,7 @@ function renderMemory(st) {
       <div class="thumb" ${thumb}>${m.thumb_b64 ? '' : '◌'}</div>
       <div class="body"><div class="name">${esc(m.name)}</div>
       <div class="spot">${esc(m.spot || (m.state === 'placed' ? 'seen, place unknown' : m.state))}</div>
+      ${m.spot_description ? `<div class="spot" style="color:var(--area);font-style:italic">“${esc(m.spot_description)}”</div>` : ''}
       <div class="meta"><span>${esc(ago(now - m.last_seen_ts_ms))}</span><b>${(m.confidence*100|0)}%</b></div></div></div>`;
   }).join('');
 }
@@ -283,6 +284,7 @@ function renderHud(st) {
     ['frames', `${st.config.frame_source}${st.config.frame_source === 'pull' ? ' · best of ' + st.config.burst_frames : ''}`],
     ['detect', 'YOLOE yoloe-26s-seg'], ['place', 'DINOv2 small'], ['memory', 'SpacetimeDB reducers'],
     ['hear', 'whisper ' + st.config.stt_model], ['think', 'Nemotron 3.5 Lightning'], ['speak', st.config.tts_provider === 'elevenlabs' ? 'ElevenLabs' : 'Piper (local)'],
+    ['look', st.vl && st.vl.on ? `Nemotron Super VL · ${st.vl.calls} calls${st.vl.avg_ms ? ' · ' + st.vl.avg_ms + ' ms' : ''}${st.vl.last ? ' · “' + st.vl.last + '”' : ''}` : 'Super VL off'],
   ].map(([k, v]) => `<span class="chip">${k} <b>${esc(v)}</b></span>`).join('');
   const stale = Date.now() - lastFrameAt > 10000;  // vision on CPU can take ~5 s a frame
   $('livePill').classList.toggle('stale', stale); $('liveText').textContent = stale ? 'NO FRAMES' : 'LIVE';

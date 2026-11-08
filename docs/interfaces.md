@@ -24,8 +24,10 @@ Both go through the same handler (`backend/frames.py`):
 1. `backend.vision.process(jpeg, frame_id, ts_ms)` (Josie's code). `frame_id` keeps counting up
    across restarts (it carries on from the newest saved frame); `ts_ms` is UTC ms.
 2. For a kept frame: `add_sighting` once per sighting, then `add_frame` once, over HTTP.
-3. The kept frame is saved as `captures/frames/<frame_id>.jpg`; only the last 60 are kept, for the
-   later Super VL step.
+3. The kept frame is saved as `captures/frames/<frame_id>.jpg`; only the last 60 are kept, for
+   Super VL (spot descriptions, second opinions, `look_at_snapshot`).
+4. Super VL is handed the kept frame in the background (section 3, "Super VL"). The frame loop
+   never waits for it.
 - Only one frame is processed at a time. A frame that arrives while another is still being
   processed (or while YOLOE is loading at startup) is skipped, not queued.
 - Each frame logs vision time, Spacetime time and total. `GET /health` adds `frame_source` and
@@ -91,7 +93,8 @@ comes from the real pipeline output; nothing is drawn that a model didn't return
 - `GET /live/state`: JSON the page polls every 0.5 s: `frame` (frame_id, kept, drop_reason,
   sharpness, sharpness_gate, area_id, area_conf, items_seen, sightings without thumbnails,
   furniture boxes, vision_ms, spacetime_ms), `stats`, `feed` (last 40 frames), `memory`
-  (item_state rows with spot phrases and thumb_b64, cached 2 s), `last_ask`, `config`.
+  (item_state rows with spot phrases and thumb_b64, cached 2 s), `last_ask`, `config`, `vl`
+  (Super VL: on, model, calls, failed, dropped, avg_ms, last answer).
 - `GET /live/frame.jpg`: the latest processed JPEG (kept or dropped), `204` before the first frame.
 The page reads from the backend only, never from Nemo, so it doesn't compete for Nemo's camera.
 
@@ -163,6 +166,17 @@ calls it at startup. (`init` does the same on a brand-new database.)
 ### check_alerts (scheduled, private)
 Called by Spacetime every 60 s from the `alert_schedule` row. Not callable by clients.
 
+### set_spot_description(item_id, placed_ts_ms, description)
+Super VL's one-sentence description of the spot ("on the desk between the lamp and the water
+bottles"). `placed_ts_ms` f64 must equal the item's current `item_state.last_placed_ts_ms`, or the
+call does nothing: a description that arrives after the item has moved again is thrown away rather
+than attached to the wrong spot.
+
+### set_scene(ts_ms, outdoors)
+Super VL's indoors/outdoors verdict for a kept frame, about once a minute. `ts_ms` f64, `outdoors`
+bool. Spacetime keeps `status.outdoors_since` (the start of the current outdoor stretch, 0 when
+indoors); `check_alerts` raises `left_house` once it has been outdoors for `OUTDOORS_MIN_MS`.
+
 ### reset_memory()
 Clears `sightings`, `item_state`, `events`, `routines`, `alerts`, `tracking` and `status`. Keeps
 `items`, `areas` and the alert schedule. For between demo runs.
@@ -187,7 +201,8 @@ Clears `sightings`, `item_state`, `events`, `routines`, `alerts`, `tracking` and
   streak_furniture, missing_since_ts (optional: when a sharp frame showed the item's furniture
   without it).
 - `status` (**private**): key (pk), ts_ms. `"last_frame"` = when `add_frame` was last called (any
-  kept frame, sharp or not), used by the no_activity check.
+  kept frame, sharp or not), used by the no_activity check. `"outdoors_since"` = when the current
+  outdoor stretch began (0 = indoors), set by `set_scene`, used by the left_house check.
 - `alert_schedule` (**private**): scheduled_id (pk), scheduled_at. One repeating row that runs
   `check_alerts` every 60 s.
 
@@ -202,6 +217,7 @@ time. A `used` event's `from_json` is `{"missing_since_ts"}` and `to_json` is th
 | FRAME_SHARP_MIN | 100 | `add_frame` sharpness must be above this for a spot to count as clearly in view |
 | IMPORTANT | 3 | importance at which "used" is tracked (the pill box) |
 | LOCAL_UTC_OFFSET_HOURS | -6 | local hour for `routines` (Dallas, CST) |
+| OUTDOORS_MIN_MS | 120000 | outdoors for this long (2 min) = left the house |
 
 ### Logic that must live in reducers (Spacetime track rule)
 - **Last seen** (`add_sighting`): store the raw sighting first.
@@ -222,9 +238,31 @@ time. A `used` event's `from_json` is `{"missing_since_ts"}` and `to_json` is th
   somewhere else instead, that's a `placed` event and `missing_since_ts` is cleared. It's a sign
   the pills were taken, not proof: no medical claims.
 
+### Super VL (built, `backend/vl.py`)
+Nemotron 3.5 Super VL (`NEMOTRON_VL_MODEL`, OpenRouter `OPENROUTER_VL_MODEL` as fallback) never sits
+on the frame loop or the question path. One background thread makes one call at a time from a
+short queue (4 jobs; when it's full a job is dropped, not queued), thinking off, short answers,
+`VL_TIMEOUT_S`. Images are small crops (448 to 640 px, 15 to 30 KB), with a green box drawn round
+the item when the crop could show several things. Calls take about 1 to 2 s. `SUPER_VL=off` turns
+all of it off; nothing else changes.
+
+After each kept frame (`vl.after_frame`), in the background:
+- **Second opinion** (`VL_SECOND_OPINION`): for a sighting vision left unsure (empty item_id with
+  candidates), biggest box first, at most 2 per frame, boxes under 80 px skipped. Super VL is shown
+  the crop and every tracked item's name (most likely first: YOLOE's wording, DINOv2's guesses,
+  then the rest) plus "none of them" and "unsure". A pick only counts if it agrees with YOLOE's
+  wording or DINOv2's top guess, OR Super VL gave the same pick on a different frame within 20 s.
+  It is then reported again as a normal `add_sighting` with that item_id and margin 1.0, so the
+  placement rules (CONFIRM_FRAMES and all) still decide. Nothing is written directly.
+- **Spot description**: when a sighting from this frame made Spacetime place an item
+  (`item_state.last_placed_ts_ms` equals the frame's `ts_ms`) and the description is empty, Super
+  VL describes the spot in one sentence, told which furniture Spacetime says it's on, and
+  `set_spot_description` stores it. `where_is` returns it as `spot_description`.
+- **Scene check** (`VL_SCENE_CHECK`, every `VL_SCENE_EVERY_S` = 60 s): indoors or outdoors from the
+  newest kept frame, whole frame at 512 px, written with `set_scene`.
+
 ### Still to define (by build step)
-- Step 6: how the Super VL spot description gets written into `item_state`.
-- Step 7: how the outdoor check and the fall check reach Spacetime and raise `alerts`.
+- Step 7: how the fall check reaches Spacetime and raises `alerts`.
 - Step 8: how reminders are picked from `routines` and sent to Nemo's `/play`.
 
 ## 4. Agent tools (Nemotron 3.5 Lightning, OpenAI-style function calling)
@@ -262,9 +300,17 @@ Speed-ups in the agent (`backend/agent.py`):
 - `item_history(item_id)` -> the 10 newest events (type, minutes_ago, to) and `uses_by_hour` from
   `routines`.
 
+- `look_at_snapshot(item_id, question)` -> `{"item_id", "minutes_ago", "answer"}`: Nemotron 3.5
+  Super VL looks at the newest saved frame that shows the item (a 640 px crop with the item boxed;
+  the thumbnail in `item_state` if no frame is left on disk, with a `note`) and answers the question
+  in one sentence, only from what it can see. `{"available": false, "reason"}` when Super VL is off,
+  there is no photo, or it did not answer within 8 s. The agent is told to use it only when memory
+  is not enough: confidence under 0.5, look-alike candidates, or the wearer asks for a detail (what
+  it is next to, what colour, open or closed). It adds about 1 to 3 s to that answer. Measured on
+  the desk frames: "is my wallet open or closed, and what colour is it?" -> "Your wallet is black
+  and closed."
+
 Still to build:
-- `look_at_snapshot(item_id)` -> Nemotron 3.5 Super VL looks at the latest snapshot, to double-check
-  a location or confirm a fall.
 - `send_carer_alert(type, message)` as an agent tool. The Python function exists already
   (`backend/alerts.py`, see section 5); it isn't wired into the agent yet.
 
@@ -303,6 +349,10 @@ Spacetime decides WHEN; the backend only sends.
 - **no_activity** (item_id `""`): between `DAY_START_HOUR` and `DAY_END_HOUR` local, if there's been
   no `placed` or `used` event and no `add_frame` for `NO_ACTIVITY_MIN`, raise: "No activity seen for
   about N hours." Not raised if nothing has ever been seen (the device is probably off).
+- **left_house**: `set_scene` (Super VL, once a minute) keeps `status.outdoors_since`. Once the
+  wearer has been outdoors for `OUTDOORS_MIN_MS` (2 min), `check_alerts` writes a `left_house`
+  alert ("It looks like they've left the house (outdoors for about N minutes)"). Coming back
+  indoors resets the stretch.
 
 | constant (top of the module) | value |
 |---|---|
@@ -326,7 +376,6 @@ alert it gave up on stays unsent, which blocks new alerts of that type until it'
 
 - **Spoken to the wearer** (the backend POSTs a WAV to Nemo's `/play`): reminders, e.g. around the usual pill time.
 - **Texted to the carer** (through Photon):
-  - left the house (Super VL outdoor check, once a minute);
   - possible fall: a jolt, then black or a fixed floor/ceiling view for 30 to 60 s, confirmed by
     Super VL.
 

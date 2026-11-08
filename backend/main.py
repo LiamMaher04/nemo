@@ -54,6 +54,9 @@ async def lifespan(_app: FastAPI):
     # Vision: load YOLOE in the background (frames that arrive meanwhile are skipped), then pull
     # frames from Nemo if FRAME_SOURCE=pull. POST /frame works either way.
     background = [sender, asyncio.create_task(asyncio.to_thread(frames.warm_up))]
+    # Super VL scene check (indoors/outdoors once a minute) on its own thread; it never blocks frames.
+    from backend import vl
+    background.append(asyncio.create_task(asyncio.to_thread(vl.scene_loop, frames.latest_kept)))
     if settings.FRAME_SOURCE == "pull":
         if settings.NEMO_JPG_URL:
             background.append(asyncio.create_task(frames.pull_loop()))
@@ -264,10 +267,12 @@ async def live_state() -> dict:
     except Exception as exc:
         memory, memory_error = [], str(exc)
     from backend.vision import settings as vs  # the thresholds the page shows
+    from backend import vl
     return {
         "now_ms": time.time() * 1000,
         "frame": frames.latest_state(),
         "stats": {**frames.stats, "avg_vision_ms_last_20": frames.avg_vision_ms()},
+        "vl": {**vl.stats, "on": settings.SUPER_VL, "model": settings.NEMOTRON_VL_MODEL},
         "feed": list(frames.history)[-40:][::-1],
         "memory": memory,
         "memory_error": memory_error,

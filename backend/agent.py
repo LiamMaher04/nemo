@@ -42,7 +42,13 @@ include "where". Use item_history for questions about whether something was used
 "have I taken my pills?") or when it was last moved around.
 
 When you say where something is, use the "spot" word for word (for example "on the sofa by the \
-couch"). Don't add a room or any other place that isn't in the tool results.
+couch"). If there's a "spot_description" too, add it: it's what the camera saw around the item \
+(e.g. "on the desk, between the lamp and the water bottles"). Don't add a room or any other place \
+that isn't in the tool results.
+
+look_at_snapshot is slow, so use it only when it changes the answer: confidence under 0.5, two or \
+more look-alike candidates, the person asks what the item is next to or for more detail, or they \
+ask whether they're indoors or out. Never for a plain "where is it" that already has a spot.
 
 Say times the way a person would: "about 20 minutes ago", "about 2 hours ago", "earlier today". \
 Never make up a place, a time or an item. Two different cases, don't mix them up:
@@ -82,6 +88,24 @@ TOOLS = [
                 "type": "object",
                 "properties": {"item_id": {"type": "string"}},
                 "required": ["item_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "look_at_snapshot",
+            "description": "Have Nemotron Super VL look at the latest photo of an item and answer a "
+                           "question about it (what's around it, which look-alike it is, is the person "
+                           "indoors). Slow (a few seconds): only when confidence is low, there are "
+                           "look-alike candidates, or the person asks for detail about the spot.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "item_id": {"type": "string"},
+                    "question": {"type": "string", "description": "What to find out, e.g. 'What is it next to?'"},
+                },
+                "required": ["item_id", "question"],
             },
         },
     },
@@ -230,7 +254,40 @@ def item_history(item_id: str) -> dict[str, Any]:
     }
 
 
-TOOL_FUNCTIONS = {"find_item": find_item, "where_is": where_is, "item_history": item_history}
+def look_at_snapshot(item_id: str, question: str = "Where exactly is it, and what is it next to?") -> dict[str, Any]:
+    """Super VL looks at the newest saved frame that shows this item. Capped at a few seconds."""
+    from backend import settings as cfg
+    from backend import vl
+
+    if not cfg.SUPER_VL:
+        return {"available": False, "reason": "Super VL is switched off"}
+    rows = st.sql(f"SELECT * FROM sightings WHERE item_id = {_quote(item_id)}")
+    rows.sort(key=lambda r: r["ts_ms"], reverse=True)
+    names = {it["item_id"]: it["name"] for it in _items()}
+    name = names.get(item_id, item_id.replace("_", " "))
+    for r in rows[:5]:  # the newest sighting whose frame is still on disk
+        path = cfg.FRAMES_DIR / f"{int(r['frame_id'])}.jpg"
+        if path.exists():
+            try:
+                answer = vl.answer_about(path.read_bytes(), r["bbox_json"], name, question)
+            except Exception as exc:
+                return {"available": False, "reason": f"Super VL didn't answer in time: {exc}"}
+            return {"item_id": item_id, "minutes_ago": _minutes_ago(r["ts_ms"]), "answer": answer}
+    # No frame left on disk: fall back to the thumbnail Spacetime kept (small, but something).
+    state = st.sql(f"SELECT * FROM item_state WHERE item_id = {_quote(item_id)}")
+    if state and state[0]["thumb_b64"]:
+        import base64
+        try:
+            answer = vl.answer_about(base64.b64decode(state[0]["thumb_b64"]), None, name, question)
+        except Exception as exc:
+            return {"available": False, "reason": f"Super VL didn't answer in time: {exc}"}
+        return {"item_id": item_id, "minutes_ago": _minutes_ago(state[0]["last_seen_ts_ms"]),
+                "answer": answer, "note": "from a small thumbnail, so less detail"}
+    return {"available": False, "reason": "no photo of that item is kept"}
+
+
+TOOL_FUNCTIONS = {"find_item": find_item, "where_is": where_is, "item_history": item_history,
+                  "look_at_snapshot": look_at_snapshot}
 
 
 def _run_tool(name: str, raw_args: str) -> tuple[dict[str, Any], Any]:
