@@ -1,4 +1,4 @@
-import { ClipVisual } from "@/components/ClipVisual";
+import { DeviceModel } from "@/components/DeviceModel";
 import { Reveal } from "@/components/Reveal";
 import { SectionLabel } from "@/components/SectionLabel";
 
@@ -9,14 +9,6 @@ const specs = [
   { term: "Answers", detail: "Out loud, in a clear voice, with a snapshot on its small screen." },
   { term: "Works", detail: "Around your home, over WiFi, with its paired device." },
   { term: "Charging", detail: "A standard USB-C cable." },
-];
-
-// Callout positions are percentages of the render's own box (see ClipVisual).
-const callouts = [
-  { label: "Tiny camera", top: "23%", side: "right" as const },
-  { label: "The one button", top: "40%", side: "right" as const },
-  { label: "Small screen", top: "63%", side: "right" as const },
-  { label: "Clip on the back", top: "6%", side: "right" as const },
 ];
 
 export function Product() {
@@ -32,24 +24,8 @@ export function Product() {
 
         <div className="mt-16 grid items-center gap-14 lg:grid-cols-12">
           <Reveal className="lg:col-span-7">
-            <div className="flex justify-center rounded-2xl bg-navy/[0.06] px-6 py-14 sm:py-16">
-              <div className="relative h-[20rem] sm:h-[26rem] md:mr-56 lg:mr-48">
-                <ClipVisual className="h-full w-auto" idPrefix="product" />
-                {callouts.map((c) => (
-                  <div
-                    key={c.label}
-                    aria-hidden="true"
-                    className={`absolute hidden items-center gap-3 text-base font-medium text-navy md:flex ${
-                      c.side === "right" ? "left-[64%] flex-row" : "right-[64%] flex-row-reverse"
-                    }`}
-                    style={{ top: c.top, transform: "translateY(-50%)" }}
-                  >
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-navy" />
-                    <span className="h-px w-20 bg-navy/50 lg:w-24" />
-                    <span className="whitespace-nowrap">{c.label}</span>
-                  </div>
-                ))}
-              </div>
+            <div>
+              <DeviceModel className="h-[24rem] sm:h-[32rem]" hint />
             </div>
           </Reveal>
 
