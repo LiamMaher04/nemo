@@ -1,43 +1,20 @@
 import { Reveal } from "@/components/Reveal";
 import { SectionLabel } from "@/components/SectionLabel";
-import { colors } from "@/theme/tokens";
-
-const stroke = { fill: "none", stroke: colors.navy, strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-
-/** Small bespoke drawings for each step. Decorative. */
-const art = [
-  // 1: keys set down on a table, quietly noticed
-  <svg key="1" viewBox="0 0 120 80" className="h-20 w-auto" aria-hidden="true">
-    <path d="M8 62h104" {...stroke} />
-    <circle cx="48" cy="50" r="7" {...stroke} />
-    <path d="M54 54l16 6M64 58l2-5" {...stroke} />
-    <circle cx="56" cy="52" r="24" fill="none" stroke={colors.aqua} strokeWidth="2" strokeDasharray="4 6" />
-  </svg>,
-  // 2: one button, a question out loud
-  <svg key="2" viewBox="0 0 120 80" className="h-20 w-auto" aria-hidden="true">
-    <rect x="30" y="8" width="44" height="66" rx="14" {...stroke} />
-    <circle cx="52" cy="46" r="11" fill={colors.navy} />
-    <path d="M86 34c5 4 5 12 0 16M95 27c9 8 9 22 0 30" fill="none" stroke={colors.aqua} strokeWidth="2" strokeLinecap="round" />
-  </svg>,
-  // 3: the answer, spoken out loud: the place and how long ago
-  <svg key="3" viewBox="0 0 120 80" className="h-20 w-auto" aria-hidden="true">
-    <path d="M14 14h66a8 8 0 0 1 8 8v26a8 8 0 0 1-8 8H44l-14 12v-12H14a8 8 0 0 1-8-8V22a8 8 0 0 1 8-8z" {...stroke} />
-    <path d="M47 27c-6 0-10 4.5-10 10 0 7 10 13 10 13s10-6 10-13c0-5.5-4-10-10-10z" fill="none" stroke={colors.coral} strokeWidth="2.5" strokeLinejoin="round" />
-    <circle cx="47" cy="37" r="3" fill={colors.coral} />
-    <path d="M98 26c5 4 5 12 0 16M106 19c9 8 9 22 0 30" fill="none" stroke={colors.aqua} strokeWidth="2" strokeLinecap="round" />
-  </svg>,
-];
+import Image from "next/image";
 
 const steps = [
   {
+    art: "notice",
     title: "Nemo quietly notices",
     body: "Wear Nemo as you go about your day. Nemo notices where everyday things get put down. Nothing to tag, nothing to set up on each item.",
   },
   {
+    art: "ask",
     title: "You hold the button and ask",
     body: "Can’t find something? Hold the one button and ask the way you’d ask a friend: “Where are my glasses?”",
   },
   {
+    art: "tell",
     title: "Nemo tells you where",
     body: "Nemo answers out loud with the place and the time: “Your glasses are on the bookshelf in the living room. I saw them there about 20 minutes ago.”",
   },
@@ -67,16 +44,16 @@ export function HowItWorks() {
               delay={i * 0.1}
               className={`border-navy/15 py-10 md:py-0 ${i > 0 ? "border-t md:border-l md:border-t-0 md:pl-10" : ""} ${i < 2 ? "md:pr-10" : ""}`}
             >
-              <div className="flex items-start justify-between">
-                <span className="font-heading text-6xl font-semibold leading-none text-navy" aria-hidden="true">
+              <Image src={`/illustrations/${s.art}.svg`} alt="" width={480} height={360} unoptimized className="h-auto w-full" />
+              <div className="mt-8 flex items-baseline gap-4">
+                <span className="font-heading text-5xl font-semibold leading-none text-navy" aria-hidden="true">
                   {i + 1}
                 </span>
-                {art[i]}
+                <h3 className="text-2xl">
+                  <span className="sr-only">Step {i + 1}: </span>
+                  {s.title}
+                </h3>
               </div>
-              <h3 className="mt-10 text-2xl">
-                <span className="sr-only">Step {i + 1}: </span>
-                {s.title}
-              </h3>
               <p className="mt-3">{s.body}</p>
             </Reveal>
           ))}

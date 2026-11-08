@@ -1,7 +1,8 @@
 "use client";
 
 import { useId } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { colors } from "@/theme/tokens";
 
 const wall = { fill: "none", stroke: colors.navy, strokeWidth: 4, strokeLinecap: "round" as const };
@@ -41,10 +42,10 @@ function Bubble({ name, x, y }: { name: string; x: number; y: number }) {
  * a dotted path room by room, and the name said out loud in each room.
  */
 export function RoomMap({ className }: { className?: string }) {
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
   const maskId = `walk-${useId().replace(/:/g, "")}`;
   const draw = reduce
-    ? {}
+    ? { initial: { pathLength: 0 }, animate: { pathLength: 1 }, transition: { duration: 0 } }
     : {
         initial: { pathLength: 0 },
         whileInView: { pathLength: 1 },

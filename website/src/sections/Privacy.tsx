@@ -1,41 +1,23 @@
 import { Reveal } from "@/components/Reveal";
 import { SectionLabel } from "@/components/SectionLabel";
-import { colors } from "@/theme/tokens";
-
-const line = { fill: "none", stroke: colors.cream, strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+import Image from "next/image";
 
 /** The three privacy rules Nemo is built around (see the repo's CLAUDE.md). */
 const rules = [
   {
     title: "No video kept",
     body: "Nemo takes quick looks, not recordings. It keeps only small snapshots of your things.",
-    icon: (
-      <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden="true">
-        <rect x="5" y="13" width="26" height="22" rx="4" {...line} />
-        <path d="M31 21l11-6v18l-11-6" {...line} />
-        <path d="M6 42L42 6" stroke={colors.coral} strokeWidth="3" strokeLinecap="round" />
-      </svg>
-    ),
+    art: "snapshots",
   },
   {
     title: "Faces blurred",
     body: "Faces are blurred before anything is saved, and Nemo doesn’t recognise people.",
-    icon: (
-      <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden="true">
-        <circle cx="24" cy="24" r="17" {...line} />
-        <path d="M14 20h20M12 26h24M14 32h20" {...line} strokeOpacity="0.55" strokeDasharray="2 4" />
-      </svg>
-    ),
+    art: "face",
   },
   {
     title: "Listens only when asked",
     body: "The microphone is on only while you hold the button.",
-    icon: (
-      <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden="true">
-        <rect x="18" y="6" width="12" height="22" rx="6" {...line} />
-        <path d="M11 22a13 13 0 0 0 26 0M24 35v7M17 42h14" {...line} />
-      </svg>
-    ),
+    art: "listen",
   },
 ];
 
@@ -62,7 +44,7 @@ export function Privacy() {
           <ul className="grid divide-y divide-cream/20 rounded-2xl ring-1 ring-cream/20 md:grid-cols-3 md:divide-x md:divide-y-0">
             {rules.map((r) => (
               <li key={r.title} className="flex flex-col items-start gap-5 p-7">
-                {r.icon}
+                <Image src={`/illustrations/${r.art}.svg`} alt="" width={480} height={300} unoptimized className="h-auto w-full" />
                 <div>
                   <h3 className="text-xl">{r.title}</h3>
                   <p className="mt-2">{r.body}</p>
