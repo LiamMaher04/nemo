@@ -101,9 +101,23 @@ Arguments, in this order:
 Appends one row to `alerts`. `item_id` `""` if none, `channel` `"spoken"` | `"carer"`, `ts_ms` f64,
 `sent` bool (whether it actually went out).
 
+### mark_alert_sent(id, sent)
+`id` u64, `sent` bool. The backend's alert sender calls this once it has texted an alert.
+
+### run_alert_checks_now(now_ms)
+Runs the carer alert checks (section 5) immediately, for testing and the demo. `now_ms` f64 UTC ms;
+`0` = the server's current time. Also makes sure `check_alerts` is scheduled.
+
+### start_alert_checks()
+Makes sure `check_alerts` is scheduled every 60 s. Safe to call any number of times; the backend
+calls it at startup. (`init` does the same on a brand-new database.)
+
+### check_alerts (scheduled, private)
+Called by Spacetime every 60 s from the `alert_schedule` row. Not callable by clients.
+
 ### reset_memory()
-Clears `sightings`, `item_state`, `events`, `routines`, `alerts` and `tracking`. Keeps `items` and
-`areas`. For between demo runs.
+Clears `sightings`, `item_state`, `events`, `routines`, `alerts`, `tracking` and `status`. Keeps
+`items`, `areas` and the alert schedule. For between demo runs.
 
 ## 3. Spacetime tables
 
@@ -124,6 +138,10 @@ Clears `sightings`, `item_state`, `events`, `routines`, `alerts` and `tracking`.
   streak_count (sightings in a row in the same area and furniture), streak_area_id,
   streak_furniture, missing_since_ts (optional: when a sharp frame showed the item's furniture
   without it).
+- `status` (**private**): key (pk), ts_ms. `"last_frame"` = when `add_frame` was last called (any
+  kept frame, sharp or not), used by the no_activity check.
+- `alert_schedule` (**private**): scheduled_id (pk), scheduled_at. One repeating row that runs
+  `check_alerts` every 60 s.
 
 `item_state` rows are created the first time an item is confirmed. A `placed` event's
 `from_json` / `to_json` are `{"area_id", "furniture", "rel_pos"}`, with `from_json` `""` the first
@@ -200,15 +218,46 @@ Photon free/pro plans use a shared line that only texts numbers that are BOTH ad
 the Photon dashboard AND have texted the shared line first (any message). Until then sends fail
 with `PERMISSION_DENIED: Target not allowed for this project`. Business gives a dedicated line.
 
-### What raises alerts (not built yet)
+### Carer alerts decided in Spacetime (built)
+Spacetime decides WHEN; the backend only sends.
+
+- `check_alerts` (every 60 s) and `run_alert_checks_now` write rows to `alerts` with channel
+  `"carer"`, sent `false`. At most one alert per type per local day, and never while an unsent one
+  of that type exists.
+- **pills_not_taken** (item_id `pill_box`): the usual hour is the hour with the highest
+  `use_count` in `routines` for the pill box, or `PILL_DUE_HOUR` if there's no routine yet. Once
+  it's past the usual hour + `PILL_GRACE_MIN` and there's no `used` event for the pill box today
+  (local day), raise: "It looks like the pills haven't been taken yet today. Last seen: <area,
+  furniture>."
+- **no_activity** (item_id `""`): between `DAY_START_HOUR` and `DAY_END_HOUR` local, if there's been
+  no `placed` or `used` event and no `add_frame` for `NO_ACTIVITY_MIN`, raise: "No activity seen for
+  about N hours." Not raised if nothing has ever been seen (the device is probably off).
+
+| constant (top of the module) | value |
+|---|---|
+| ALERT_CHECK_EVERY_MS | 60000 |
+| PILL_ITEM_ID | `pill_box` |
+| PILL_DUE_HOUR | 9 (local) |
+| PILL_GRACE_MIN | 60 |
+| DAY_START_HOUR, DAY_END_HOUR | 8, 21 (local) |
+| NO_ACTIVITY_MIN | 180 |
+| LOCAL_UTC_OFFSET_HOURS | -6 (local day and hour) |
+
+Backend sender loop (`backend/alerts.py`, started with the FastAPI app): every 5 s it reads
+`SELECT * FROM alerts WHERE channel = 'carer' AND sent = false`, texts each through the notifier,
+and calls `mark_alert_sent(id, true)`. If the notifier fails it leaves the row unsent and retries
+next round, up to 3 tries per alert (counted in memory, so a backend restart tries again). An
+alert it gave up on stays unsent, which blocks new alerts of that type until it's cleared.
+
+**While the backend runs, these are real texts to `CARER_PHONE`.**
+
+### Still to build
 
 - **Spoken to the wearer** (through `GET /say`): reminders, e.g. around the usual pill time.
 - **Texted to the carer** (through Photon):
   - left the house (Super VL outdoor check, once a minute);
-  - pills not taken by the usual time;
   - possible fall: a jolt, then black or a fixed floor/ceiling view for 30 to 60 s, confirmed by
-    Super VL;
-  - no activity for hours during the daytime.
+    Super VL.
 
 ## 6. Environment variables (see .env.example)
 
