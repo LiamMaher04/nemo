@@ -41,14 +41,37 @@ toothbrush in the hotel demo set.
 - `website/` marketing site
 - `docs/interfaces.md` the contracts between the parts
 
-## Setup
+## Setup on a new laptop (Windows)
 
-1. `cp .env.example .env` and fill in keys.
-2. Put the laptop and the device on the same phone hotspot (2.4 GHz; iPhone: Maximise
+1. Clone the repo and `cd` into it.
+2. Python 3.11 venv and packages:
+   ```
+   py -3.11 -m venv backend\.venv
+   backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt -r backend\vision\requirements.txt
+   ```
+3. `.env`: copy `.env.example` to `.env`, then get the real keys from Liam (they're never in git).
+   Set `NEMO_JPG_URL` and `NEMO_URL` to the address on Nemo's screen.
+4. Reference photos (not in git, too big and private): get the `captures\grab\sorted` folder from
+   Liam and put it at the same path, or point `REFS_DIR` at your own capture.
+5. Put the laptop and the device on the same phone hotspot (2.4 GHz; iPhone: Maximise
    Compatibility).
-3. Backend: `backend\.venv\Scripts\python.exe -m backend.main` from the repo root, then open
-   `http://localhost:8000/live`.
-4. See each folder's README.
+6. Run the backend from the repo root, then open `http://localhost:8000/live`:
+   ```
+   backend\.venv\Scripts\python.exe -m backend.main
+   ```
+   YOLOE and DINOv2 weights download themselves on the first run.
+7. Optional, in their own terminals:
+   - Ask through Nemo with the laptop's space bar: `backend\.venv\Scripts\python.exe -m backend.talk_bridge`
+   - Carer texts: `cd notifier`, `bun install`, `bun run start`
+   - Vision on a Brev GPU instead of the laptop: `docs/brev.md`
+
+Handy tools in the repo root:
+- `viewer.py`: live view of Nemo's camera. `backend\.venv\Scripts\python.exe viewer.py http://<Nemo's IP>/jpg`
+- `grab.py`: capture reference photos for an area, keeping only sharp, new frames.
+  `backend\.venv\Scripts\python.exe grab.py desk --url http://<Nemo's IP>/jpg` (P pause, Space save,
+  Q quit; type a new area name + Enter to switch folders). Frames go to `captures/grab/<area>/`.
+
+See each folder's README for more.
 
 ## Privacy
 
