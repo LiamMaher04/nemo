@@ -15,11 +15,23 @@ commit as the code change, and tell the team.
 
 ### POST /ask
 - The wearer holds the button and asks out loud. The device records while the button is held.
-- Body: raw audio. `audio/wav`, 16 kHz, mono, 16-bit PCM.
+- Body: raw audio. `audio/wav`, 16 kHz, mono, 16-bit PCM. (Other rates or stereo are converted.)
 - Headers: `X-Device-Id`.
-- Backend: speech to text (faster-whisper; also test Nemotron 3 Nano Omni) -> agent -> text to
-  speech.
-- Response: `200`, `Content-Type: audio/wav` (the spoken answer, played on Nemo's speaker).
+- Backend (`backend/speech.py`, models loaded once at startup):
+  - speech to text: faster-whisper, `STT_MODEL` (default `small.en`), on CPU, int8;
+  - the same agent as `/ask_text`;
+  - text to speech, by `TTS_PROVIDER`: `local` = Piper (`PIPER_VOICE`, files in `data/voices/`,
+    offline, no key), `elevenlabs` = `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID`, model
+    `eleven_flash_v2_5`, `pcm_16000` output. If ElevenLabs fails for any reason, the answer is
+    spoken with the local Piper voice instead (Piper is always loaded). ElevenLabs' free plan
+    can't use voice-library voices over the API (402); use a default voice or a paid plan.
+  - Also test Nemotron 3 Nano Omni for speech to text later.
+- Response: `200`, `Content-Type: audio/wav`, 16 kHz, mono, 16-bit PCM (the spoken answer, played
+  on Nemo's speaker), with headers `X-Question-Text` and `X-Answer-Text` (UTF-8, percent-encoded)
+  and `X-Voice` (`local` | `elevenlabs`, the voice actually used).
+  If nothing was heard it still answers out loud ("Sorry, I didn't catch that..."). `400` if the
+  body isn't a WAV, `503` if speech didn't load at startup.
+- Each part is timed in the log: speech to text, agent, text to speech, total.
 
 ### POST /ask_text
 - Text in, text out, for testing the agent without the device (no speech).
