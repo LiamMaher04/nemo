@@ -24,5 +24,13 @@ SPACETIME_URL: str = _clean(os.getenv("SPACETIME_URL"), "https://maincloud.space
 SPACETIME_DB: str = _clean(os.getenv("SPACETIME_DB"), "nemodb-g8356")
 SPACETIME_TOKEN: str = _clean(os.getenv("SPACETIME_TOKEN"), "")  # optional; anonymous if empty
 
+NEMOTRON_BASE_URL: str = _clean(os.getenv("NEMOTRON_BASE_URL"), "https://integrate.api.nvidia.com/v1")
+NEMOTRON_API_KEY: str = _clean(os.getenv("NEMOTRON_API_KEY"), "")
+NEMOTRON_AGENT_MODEL: str = _clean(os.getenv("NEMOTRON_AGENT_MODEL"), "nvidia/nemotron-3.5-lightning-30b-a3b")
+
+OPENROUTER_BASE_URL: str = _clean(os.getenv("OPENROUTER_BASE_URL"), "https://openrouter.ai/api/v1")
+OPENROUTER_API_KEY: str = _clean(os.getenv("OPENROUTER_API_KEY"), "")
+OPENROUTER_MODEL: str = _clean(os.getenv("OPENROUTER_MODEL"), "nvidia/nemotron-3.5-lightning-30b-a3b")
+
 CAPTURES_DIR: Path = REPO_ROOT / "captures"
 LATEST_FRAME: Path = CAPTURES_DIR / "latest.jpg"

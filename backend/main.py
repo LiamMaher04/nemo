@@ -10,8 +10,10 @@ from collections import deque
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 
-from backend import settings
+from backend import agent, settings
 
 log = logging.getLogger("nemo.backend")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -72,6 +74,24 @@ async def frame(request: Request) -> dict:
         (time.perf_counter() - started) * 1000,
     )
     return {"ok": True}
+
+
+class AskText(BaseModel):
+    question: str
+
+
+@app.post("/ask_text")
+async def ask_text(body: AskText) -> dict:
+    """Text in, text out: the agent answers a question. Tool calls and timing are logged by agent.ask."""
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question is empty")
+    try:
+        result = await run_in_threadpool(agent.ask, question)
+    except RuntimeError as exc:
+        log.error("ask_text failed: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {"answer": result["answer"], "tool_calls": result["tool_calls"]}
 
 
 if __name__ == "__main__":

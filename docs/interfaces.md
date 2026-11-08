@@ -21,6 +21,12 @@ commit as the code change, and tell the team.
   speech.
 - Response: `200`, `Content-Type: audio/wav` (the spoken answer, played on Nemo's speaker).
 
+### POST /ask_text
+- Text in, text out, for testing the agent without the device (no speech).
+- Body: `{"question": "where's my remote?"}`
+- Response: `200 {"answer": "...", "tool_calls": [{"name", "args", "result", "ms"}, ...]}`.
+  `503` if no model provider could answer.
+
 ### GET /say
 - The device polls this every few seconds for anything to say (reminders).
 - Headers: `X-Device-Id`.
@@ -141,9 +147,17 @@ time. A `used` event's `from_json` is `{"missing_since_ts"}` and `to_json` is th
 
 ## 4. Agent tools (Nemotron 3.5 Lightning, OpenAI-style function calling)
 
-- `find_item(name)` -> item_id, using names and aliases, or a clarifying question if it's ambiguous.
-- `where_is(item_id)` -> area, furniture, position, time, confidence.
-- `item_history(item_id, since)` -> recent events and sightings.
+Built so far (`backend/agent.py`, max 5 model calls per question, thinking off, NVIDIA API first
+then OpenRouter):
+
+- `find_item(name)` -> `{"item_id", "name"}`, or `{"candidates": [...]}` if several match, or
+  `{"found": false, "tracked_items": [...]}`. Matches items.name, item_id, aliases, then attributes.
+- `where_is(item_id)` -> `{"seen": false}`, or area name, room, furniture, spot_description,
+  minutes_ago, confidence, candidates.
+- `item_history(item_id)` -> the 10 newest events (type, minutes_ago, to) and `uses_by_hour` from
+  `routines`.
+
+Still to build:
 - `look_at_snapshot(item_id)` -> Nemotron 3.5 Super VL looks at the latest snapshot, to double-check
   a location or confirm a fall.
 - `send_carer_alert(message)` -> sends an iMessage/SMS through Photon (Spectrum TypeScript SDK) and
