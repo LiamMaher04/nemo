@@ -9,7 +9,7 @@ const steps = [
   },
   {
     title: "Walk through each room",
-    body: "Go room by room at your own pace, the way you’d show a guest around. Nemo maps out your home as you go.",
+    body: "Go room by room at your own pace, the way you’d show a guest around. Nemo learns what each room looks like as you go.",
   },
   {
     title: "Say the room’s name",

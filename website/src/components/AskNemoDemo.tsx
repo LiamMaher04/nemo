@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { GlassesScene, KeysScene, RemoteScene } from "./Scenes";
 
 const conversations = [
   {
@@ -10,28 +9,22 @@ const conversations = [
     label: "Keys",
     question: "Where are my keys?",
     answer: "I last saw your keys on the kitchen table, next to the fruit bowl. That was about twenty minutes ago.",
-    Scene: KeysScene,
-    alt: "Snapshot of a kitchen table with a set of keys beside a bowl of fruit, circled.",
   },
   {
     item: "glasses",
     label: "Glasses",
     question: "Have you seen my glasses?",
     answer: "Your glasses are on the top shelf of the bookcase in the living room. You set them down this morning.",
-    Scene: GlassesScene,
-    alt: "Snapshot of a bookcase with a pair of reading glasses on the top shelf, circled.",
   },
   {
     item: "remote",
     label: "Remote",
     question: "Where did I put the remote?",
-    answer: "The remote is on the right arm of the sofa. I saw it there about an hour ago.",
-    Scene: RemoteScene,
-    alt: "Snapshot of a sofa with the TV remote resting on its right arm, circled.",
+    answer: "The remote is on the right arm of the sofa in the living room. I saw it there about an hour ago.",
   },
 ];
 
-/** A simulated "Ask Nemo" exchange: pick a question, see Nemo's spoken answer and photo. */
+/** A simulated "Ask Nemo" exchange: pick a question, see what Nemo says out loud. */
 export function AskNemoDemo() {
   const [index, setIndex] = useState(0);
   const convo = conversations[index];
@@ -78,14 +71,6 @@ export function AskNemoDemo() {
                 </div>
                 <p className="mt-2 text-xl leading-relaxed">&ldquo;{convo.answer}&rdquo;</p>
               </div>
-              <figure>
-                <div className="aspect-[3/2] w-full border-t border-navy/15" role="img" aria-label={convo.alt}>
-                  <convo.Scene />
-                </div>
-                <figcaption className="border-t border-navy/15 px-6 py-3 text-base sm:px-8">
-                  Where I last saw your {convo.item}
-                </figcaption>
-              </figure>
             </motion.div>
           </AnimatePresence>
         </div>
