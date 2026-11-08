@@ -3,7 +3,8 @@
     python -m backend.vision.run                  # webcam 0
     python -m backend.vision.run --camera 1       # another camera
     python -m backend.vision.run --folder path/   # every .jpg / .jpeg in a folder, in name order
-    python -m backend.vision.run --url http://<device-ip>/jpg   # poll a JPEG URL as fast as it answers
+    python -m backend.vision.run --url http://<device-ip>/jpg   # poll a JPEG URL
+    add --fps N to change the webcam / --url frame rate (default 1, like Nemo; 0 = no limit)
     add --show to see the boxes (folder mode: press any key for the next image, q to quit)
     add --save backend/vision/captures/ to keep every kept frame (faces blurred) as a JPEG
 """
@@ -25,6 +26,8 @@ from backend.vision import detector, pipeline, process, settings
 from backend.vision.pipeline import VisionResult
 
 WINDOW = "Nemo vision"
+CAMERA_START_S = 10.0  # how long a camera may take to send its first frame
+CAMERA_DROPOUT_S = 5.0  # how long failed reads are retried once the camera has started
 
 
 def frames_from_folder(folder: Path) -> Iterator[bytes]:
@@ -35,17 +38,56 @@ def frames_from_folder(folder: Path) -> Iterator[bytes]:
         yield path.read_bytes()
 
 
-def frames_from_camera(index: int) -> Iterator[bytes]:
+def _open_camera(index: int) -> cv2.VideoCapture:
     cap = cv2.VideoCapture(index)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-    if not cap.isOpened():
-        raise SystemExit(f"Could not open camera {index}")
+    return cap
+
+
+def frames_from_camera(index: int, fps: float) -> Iterator[bytes]:
+    """Webcam frames, at most `fps` a second (0 = every frame).
+
+    The camera is read continuously so each frame handed on is fresh, not one that sat in a
+    buffer. A camera that is slow to start (an iPhone over Continuity Camera can take a second
+    or two) gets CAMERA_START_S; after that, failed reads are retried for CAMERA_DROPOUT_S.
+    """
+    interval = 1.0 / fps if fps > 0 else 0.0
+    cap = _open_camera(index)
+    started = False
+    failing_since: float | None = None
+    deadline = time.monotonic() + CAMERA_START_S
+    last_yield = 0.0
     try:
         while True:
-            ok, bgr = cap.read()
+            ok, bgr = cap.read() if cap.isOpened() else (False, None)
+            now = time.monotonic()
             if not ok:
-                break
+                if not started:
+                    if now > deadline:
+                        raise SystemExit(
+                            f"Camera {index} sent no frames in {CAMERA_START_S:g} s. Check the --camera index "
+                            "(the iPhone is often 0 or 1), that the iPhone is unlocked and nearby, and that "
+                            "this terminal app has camera permission (System Settings > Privacy & Security > Camera).")
+                elif failing_since is None:
+                    failing_since = now
+                    print(f"camera {index}: read failed, retrying for up to {CAMERA_DROPOUT_S:g} s", flush=True)
+                elif now - failing_since > CAMERA_DROPOUT_S:
+                    raise SystemExit(f"Camera {index} stopped sending frames for {CAMERA_DROPOUT_S:g} s; giving up.")
+                if not cap.isOpened():  # some cameras only open once they are ready
+                    cap.release()
+                    cap = _open_camera(index)
+                time.sleep(0.1)
+                continue
+            if not started:
+                started = True
+                print(f"camera {index}: first frame {bgr.shape[1]}x{bgr.shape[0]}", flush=True)
+            if failing_since is not None:
+                print(f"camera {index}: frames are back after {now - failing_since:.1f} s", flush=True)
+                failing_since = None
+            if now - last_yield < interval:
+                continue  # read and dropped, to keep the next frame fresh
+            last_yield = now
             ok, jpg = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])
             if ok:
                 yield jpg.tobytes()
@@ -53,9 +95,15 @@ def frames_from_camera(index: int) -> Iterator[bytes]:
         cap.release()
 
 
-def frames_from_url(url: str) -> Iterator[bytes]:
-    """Fetch a JPEG from the URL again and again, as fast as it answers."""
+def frames_from_url(url: str, fps: float) -> Iterator[bytes]:
+    """Fetch a JPEG from the URL again and again, at most `fps` a second (0 = as fast as it answers)."""
+    interval = 1.0 / fps if fps > 0 else 0.0
+    last_fetch = 0.0
     while True:
+        wait = last_fetch + interval - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        last_fetch = time.monotonic()
         try:
             with urllib.request.urlopen(url, timeout=5) as resp:
                 body = resp.read()
@@ -123,6 +171,9 @@ def main() -> None:
     source_group.add_argument("--folder", type=Path, help="folder of JPEGs (default: webcam)")
     source_group.add_argument("--url", help="URL that returns one JPEG per request, e.g. http://<device-ip>/jpg")
     parser.add_argument("--camera", type=int, default=0, help="webcam index (default 0)")
+    parser.add_argument("--fps", type=float, default=1.0,
+                        help="max frames a second from the webcam or --url (default 1, like Nemo; 0 = no limit); "
+                             "ignored for --folder")
     parser.add_argument("--show", action="store_true", help="open a window with the boxes drawn")
     parser.add_argument("--save", type=Path, metavar="DIR",
                         help="save every kept frame (faces blurred) as a JPEG in DIR; inside the repo DIR must be gitignored")
@@ -133,12 +184,16 @@ def main() -> None:
     print(f"loading YOLOE and DINOv2 on {detector.pick_device()} ...", flush=True)
     pipeline.load()
 
+    limit = f"{args.fps:g} fps" if args.fps > 0 else "no limit"
     if args.folder:
+        print(f"source: folder {args.folder} (--fps ignored, every image is used)", flush=True)
         source = frames_from_folder(args.folder)
     elif args.url:
-        source = frames_from_url(args.url)
+        print(f"source: {args.url}, frame rate limit {limit}", flush=True)
+        source = frames_from_url(args.url, args.fps)
     else:
-        source = frames_from_camera(args.camera)
+        print(f"source: camera {args.camera}, frame rate limit {limit}", flush=True)
+        source = frames_from_camera(args.camera, args.fps)
     frame_id = 0
     try:
         for jpeg_bytes in source:
