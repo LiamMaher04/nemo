@@ -30,7 +30,7 @@ NEMOTRON_AGENT_MODEL: str = _clean(os.getenv("NEMOTRON_AGENT_MODEL"), "nvidia/ne
 
 OPENROUTER_BASE_URL: str = _clean(os.getenv("OPENROUTER_BASE_URL"), "https://openrouter.ai/api/v1")
 OPENROUTER_API_KEY: str = _clean(os.getenv("OPENROUTER_API_KEY"), "")
-OPENROUTER_MODEL: str = _clean(os.getenv("OPENROUTER_MODEL"), "nvidia/nemotron-3.5-lightning-30b-a3b")
+OPENROUTER_MODEL: str = _clean(os.getenv("OPENROUTER_MODEL"), "nvidia/nemotron-3.5-lightning:free")
 
 CAPTURES_DIR: Path = REPO_ROOT / "captures"
 LATEST_FRAME: Path = CAPTURES_DIR / "latest.jpg"

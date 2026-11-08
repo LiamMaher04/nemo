@@ -152,8 +152,8 @@ then OpenRouter):
 
 - `find_item(name)` -> `{"item_id", "name"}`, or `{"candidates": [...]}` if several match, or
   `{"found": false, "tracked_items": [...]}`. Matches items.name, item_id, aliases, then attributes.
-- `where_is(item_id)` -> `{"seen": false}`, or area name, room, furniture, spot_description,
-  minutes_ago, confidence, candidates.
+- `where_is(item_id)` -> `{"seen": false}`, or spot (a ready-to-say phrase such as "on the sofa by
+  the couch"), area name, furniture, spot_description, minutes_ago, confidence, candidates.
 - `item_history(item_id)` -> the 10 newest events (type, minutes_ago, to) and `uses_by_hour` from
   `routines`.
 
