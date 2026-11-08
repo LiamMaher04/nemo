@@ -20,5 +20,9 @@ def _clean(value: str | None, default: str) -> str:
 BACKEND_HOST: str = _clean(os.getenv("BACKEND_HOST"), "0.0.0.0")
 BACKEND_PORT: int = int(_clean(os.getenv("BACKEND_PORT"), "8000"))
 
+SPACETIME_URL: str = _clean(os.getenv("SPACETIME_URL"), "https://maincloud.spacetimedb.com")
+SPACETIME_DB: str = _clean(os.getenv("SPACETIME_DB"), "nemodb-g8356")
+SPACETIME_TOKEN: str = _clean(os.getenv("SPACETIME_TOKEN"), "")  # optional; anonymous if empty
+
 CAPTURES_DIR: Path = REPO_ROOT / "captures"
 LATEST_FRAME: Path = CAPTURES_DIR / "latest.jpg"

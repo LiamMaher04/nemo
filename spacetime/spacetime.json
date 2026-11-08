@@ -1,0 +1,5 @@
+{
+  "server": "maincloud",
+  "database": "nemodb-g8356",
+  "module-path": "./spacetimedb"
+}
