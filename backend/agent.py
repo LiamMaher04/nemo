@@ -19,9 +19,9 @@ log = logging.getLogger("nemo.agent")
 MAX_STEPS = 5
 
 SYSTEM_PROMPT = """You are Nemo, a small camera clipped to an older person's shirt. Your one job is \
-helping them find their everyday things (keys, glasses, phone, TV remote, wallet, pill box, \
-toothbrush) by remembering where you last saw them, and whether the pill box looks like it was \
-used. Your answer is spoken out loud, so be kind and short: one or two plain sentences, no lists, \
+helping them find their everyday things (keys, glasses, phone, TV remote, wallet, their pills \
+(a pill bottle), toothbrush) by remembering where you last saw them, and whether the pill bottle \
+looks like it was used. Your answer is spoken out loud, so be kind and short: one or two plain sentences, no lists, \
 no markdown, no questions back unless you truly can't tell which item they mean.
 
 Honesty comes first. Everything you say must come from your tools in this conversation. You know \
@@ -30,10 +30,25 @@ appointments, plans or past. Never invent, guess or "fill in" a fact, a name, a 
 even to be friendly. If you're not sure, say so. You are a device, not a person: you have no \
 family, feelings or life of your own, and you don't pretend otherwise.
 
-If they ask for anything outside your job (a family member's name, the weather, the news, the \
-date, medical advice, general chat), don't answer it and don't make something up. Kindly say \
+You have a second job: passing a message to their carer with send_carer_alert. Call it whenever \
+the person asks you to tell, let know, message or pass something on to anyone (their carer, \
+daughter, son, family, "them"), for example "please tell my daughter I'm okay", "let them know I \
+can't find my keys", "tell my son I'll ring him later", or says they've fallen, are hurt or need \
+help. That is part of your job, so never refuse it: call the tool. Send it even when the message \
+mentions one of their things ("let them know I can't find my keys" is a message to send, not a \
+question to answer). Never use it on your own initiative, and never for anything else.
+
+If they ask for anything outside these two jobs (a family member's name, the weather, the news, \
+the date, medical advice, general chat), don't answer it and don't make something up. Kindly say \
 you can only help them find their things, for example: "I'm sorry, I can't help with that. I \
 can help you find your things, like your keys or glasses."
+
+About send_carer_alert: The message starts with "Nemo here." and is one short sentence, in \
+their own words where you can, about them, for example "Nemo here. They asked me to tell you \
+they're okay." or "Nemo here. They say they've fallen and can't get up." Don't add names, \
+relationships, places or details they didn't say, and no medical words. It goes to their carer \
+(you can't choose who). Then say exactly the tool result's "say" sentence and nothing more: \
+never say the carer was told unless the result says requested: true.
 
 Use the tools to look things up before answering. First find_item to work out which item they \
 mean: when it finds exactly one item it also tells you where that item was last seen ("where"), \
@@ -106,6 +121,28 @@ TOOLS = [
                     "question": {"type": "string", "description": "What to find out, e.g. 'What is it next to?'"},
                 },
                 "required": ["item_id", "question"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_carer_alert",
+            "description": "Text the person's carer. ONLY when they explicitly ask you to tell or let "
+                           "someone know something (their carer, family, 'them'), even if it mentions "
+                           "one of their things, or say they've fallen, are hurt or need help. Never "
+                           "otherwise.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reason": {"type": "string", "enum": ["asked_to_pass_on", "fallen_hurt_or_needs_help"],
+                               "description": "Why: they asked you to pass something on, or they've "
+                                              "fallen, are hurt or need help"},
+                    "message": {"type": "string",
+                                "description": "One short sentence starting 'Nemo here.', in their own "
+                                               "words where possible"},
+                },
+                "required": ["reason", "message"],
             },
         },
     },
@@ -286,8 +323,33 @@ def look_at_snapshot(item_id: str, question: str = "Where exactly is it, and wha
     return {"available": False, "reason": "no photo of that item is kept"}
 
 
+def send_carer_alert(reason: str, message: str) -> dict[str, Any]:
+    """Ask Spacetime to record a carer alert (type agent_request). Never calls Photon itself: the
+    backend's sender loop texts it, so CARER_ALERTS still decides whether anything is sent.
+    Spacetime allows one agent_request every 10 minutes."""
+    text = " ".join(str(message).split())[:300]
+    if not text:
+        return {"requested": False, "error": "empty message"}
+    if not text.lower().startswith("nemo here"):
+        text = "Nemo here. " + text
+    asked_at = time.time() * 1000
+    st.call("request_carer_alert", "agent_request", text)
+    # Spacetime decides (one every 10 minutes) and writes nothing if it's too soon: read back.
+    rows = [r for r in st.sql("SELECT * FROM alerts WHERE type = 'agent_request'")]
+    newest = max(rows, key=lambda r: r["ts_ms"], default=None)
+    if newest and newest["message"] == text and newest["ts_ms"] >= asked_at - 30_000:
+        log.info("send_carer_alert (%s) requested: %r", reason, text)
+        return {"requested": True, "reason": reason, "message": text,
+                "say": "Okay, I've let your carer know."}
+    minutes = round((asked_at - newest["ts_ms"]) / 60000) if newest else None
+    log.info("send_carer_alert (%s) too soon (last one %s min ago): %r", reason, minutes, text)
+    return {"requested": False, "too_soon": True, "minutes_since_last": minutes,
+            "note": "NOT sent: their carer was already sent a message in the last 10 minutes.",
+            "say": "I sent your carer a message a few minutes ago, so I can't send another one just yet."}
+
+
 TOOL_FUNCTIONS = {"find_item": find_item, "where_is": where_is, "item_history": item_history,
-                  "look_at_snapshot": look_at_snapshot}
+                  "look_at_snapshot": look_at_snapshot, "send_carer_alert": send_carer_alert}
 
 
 def _run_tool(name: str, raw_args: str) -> tuple[dict[str, Any], Any]:
@@ -362,14 +424,30 @@ def _items_named_in(question: str) -> list[dict[str, Any]]:
     return found
 
 
+# Questions asking Nemo to pass something on ("let them know I can't find my keys" is a message for
+# the carer, not a question about the keys): no prefetch, and a one-line hint so the agent sees it.
+PASS_ON_WORDS = (" tell ", " let them know", " let her know", " let him know", " let my ", " message ",
+                 " pass on ", " ring my ", " call my ")
+PASS_ON_HINT = ("This sounds like a message for their carer: use send_carer_alert, then say its 'say' "
+                "sentence.")
+
+
+def _asks_to_pass_on(question: str) -> bool:
+    q = " " + " ".join("".join(c if c.isalnum() or c == "'" else " " for c in question.lower()).split()) + " "
+    q = q.replace(" tell me ", " ")  # "can you tell me where my keys are" is a question for Nemo
+    return any(w in q for w in PASS_ON_WORDS)
+
+
 def _prefetch(question: str) -> list[tuple[str, dict[str, Any], Any]]:
     """If the question names exactly one tracked item, look it up before the first model call.
 
     Returns (tool name, args, result) tuples to put in the conversation as if the agent had called
     them, so a plain "where's my X?" is answered in ONE Nemotron call instead of two (~1.5 s
-    quicker). The agent keeps all its tools for anything else. For important items (the pill box)
+    quicker). The agent keeps all its tools for anything else. For important items (the pills)
     item_history is fetched too, for "have I taken my pills?".
     """
+    if _asks_to_pass_on(question):
+        return []  # a message for their carer, not a "where is it": let the agent use send_carer_alert
     named = _items_named_in(question)
     if len(named) != 1:
         return []
@@ -387,6 +465,8 @@ def ask(question: str) -> dict[str, Any]:
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": question},
     ]
+    if _asks_to_pass_on(question):
+        messages.insert(1, {"role": "system", "content": PASS_ON_HINT})
     tool_calls: list[dict[str, Any]] = []
     answer = ""
     provider = ""

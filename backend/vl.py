@@ -227,6 +227,26 @@ def answer_about(jpeg: bytes, bbox_json: str | None, item_name: str, question: s
     return _clean_sentence(ask_image(img, prompt, max_tokens=60, timeout_s=8), max_chars=200)
 
 
+FALL_PROMPT = ("Does this look like a floor or ceiling seen by someone who has fallen, or a camera lying "
+               "face down? Answer yes or no.")
+
+
+def fall_check_job(jpeg: bytes, ts_ms: float) -> bool:
+    """backend/fall.py saw a long run of dark or still, featureless frames: does Super VL agree?
+
+    Yes -> Spacetime's report_possible_fall raises the carer alert (at most one every 30 minutes).
+    """
+    img = whole_frame(jpeg, 512)
+    if not img:
+        return False
+    answer = ask_image(img, FALL_PROMPT, max_tokens=4).strip().lower()
+    yes = answer.startswith("yes")
+    log.info("super vl fall check: %r -> %s", answer, "possible fall reported" if yes else "not a fall")
+    if yes:
+        st.call("report_possible_fall", ts_ms)
+    return yes
+
+
 # ---- Background worker: one Super VL call at a time, never blocking frames or answers ----
 
 _jobs: queue.Queue = queue.Queue(maxsize=QUEUE_SIZE)
@@ -283,15 +303,16 @@ PICK_REPEAT_MS = 20_000  # a Super VL pick nobody else supports counts once it r
 _last_pick: dict[str, tuple[Any, float, str]] = {}  # item_id -> (frame_id, ts_ms, YOLOE label) of the last pick
 
 # When DINOv2 is unsure and Super VL can't tell either, YOLOE's own wording may still place these
-# items, if YOLOE was reasonably confident. Only the pill box: it's the item the reminders and the
-# carer alerts depend on, and YOLOE's pill-box wordings don't look like anything else we track.
+# items, if YOLOE was reasonably confident. Only the pill bottle (item_id pill_box): it's the item
+# the reminders and the carer alerts depend on, and YOLOE's pill-bottle wordings don't look like
+# anything else we track.
 # The sighting still goes through add_sighting, so CONFIRM_FRAMES (2 in a row) still applies.
 YOLOE_FALLBACK_ITEMS = {"pill_box"}
 YOLOE_FALLBACK_MIN_CONF = 0.30  # YOLOE confidence needed (DETECT_CONF, the floor, is 0.20)
 
 
 def _label_item(label: str, names: dict[str, str]) -> str:
-    """The item_id YOLOE's wording points at ("plastic pill box with small lids" -> pill_box), or ""."""
+    """The item_id YOLOE's wording points at ("pill bottle with white cap" -> pill_box), or ""."""
     try:
         from backend.vision import classes
         for item_id, wordings in classes.ITEMS.items():
@@ -313,7 +334,7 @@ def _report_identified(sighting: dict[str, Any], item_id: str, jpeg: bytes) -> N
 
 
 def _yoloe_fallback(sighting: dict[str, Any], label_item: str, jpeg: bytes, why: str) -> bool:
-    """Super VL couldn't tell: trust YOLOE's wording for the pill box if YOLOE was confident enough."""
+    """Super VL couldn't tell: trust YOLOE's wording for the pill bottle if YOLOE was confident enough."""
     if label_item not in YOLOE_FALLBACK_ITEMS or sighting["det_conf"] < YOLOE_FALLBACK_MIN_CONF:
         return False
     _report_identified(sighting, label_item, jpeg)

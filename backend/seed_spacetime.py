@@ -52,12 +52,14 @@ ITEMS = [
         "attributes": {"detector_prompt": "wallet", "size": "small"},
     },
     {
+        # item_id stays "pill_box" (Spacetime's PILL_ITEM_ID and the alerts use it). It's a pill bottle.
         "item_id": "pill_box",
-        "name": "pill box",
+        "name": "pills",
         "category": "medication",
         "importance": 3,
-        "aliases": ["pills", "pill organiser", "pill organizer", "medicine", "tablets"],
-        "attributes": {"detector_prompt": "pill organizer box", "size": "small", "reminders": True},
+        "aliases": ["pill bottle", "medicine", "meds", "tablets", "pills", "pill box",
+                    "pill organiser", "pill organizer"],
+        "attributes": {"detector_prompt": "clear plastic pill bottle", "size": "small", "reminders": True},
     },
     {
         "item_id": "toothbrush",

@@ -12,7 +12,7 @@ from backend import spacetime_client as st
 
 ITEM_LABELS = {
     "tv_remote": "tv remote control",
-    "pill_box": "pill organizer box",
+    "pill_box": "clear plastic pill bottle",
 }
 
 SHARP = 150.0

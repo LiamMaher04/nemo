@@ -122,8 +122,11 @@ the hotspot. `backend/talk_bridge.py` does the same from the laptop (hold SPACE 
 release -> `/rec/stop` -> `POST /ask` -> `POST {NEMO_URL}/play`), for when the button sketch isn't
 flashed. Only run one copy (it holds a lock on port 47613).
 
-**Spoken reminders:** the backend will POST a WAV to Nemo's `/play` when there's something to say.
-This replaces the earlier plan of Nemo polling `GET /say` (not built).
+**Spoken alerts:** the backend's sender loop POSTs a WAV to Nemo's `/play` (multipart `file`) for
+every unsent alert with channel `"spoken"` (section 5), e.g. the pill reminder.
+
+**Fall check:** every frame Nemo returns, kept or dropped, also goes through `backend/fall.py`
+before vision (section 5, "Possible fall").
 
 The OLED only ever shows eyes (awake when on, closed when off). Nothing from the backend goes on it.
 
@@ -225,6 +228,18 @@ Super VL's indoors/outdoors verdict for a kept frame, about once a minute. `ts_m
 bool. Spacetime keeps `status.outdoors_since` (the start of the current outdoor stretch, 0 when
 indoors); `check_alerts` raises `left_house` once it has been outdoors for `OUTDOORS_MIN_MS`.
 
+### report_possible_fall(ts_ms)
+Called by the backend's fall check once Super VL has agreed (section 5). `ts_ms` f64 UTC ms (`0` =
+server time). Writes a carer alert, type `possible_fall`, unless there was one within
+`FALL_ALERT_EVERY_MS` (30 min); otherwise does nothing.
+
+### request_carer_alert(type, message)
+The agent's `send_carer_alert` tool (section 4). `type` must be `"agent_request"`; `message` is
+trimmed to 300 characters. Writes an unsent carer alert, type `agent_request`, unless one was
+written in the last `AGENT_REQUEST_EVERY_MS` (10 min), or the type is wrong or the message empty;
+then it writes nothing (it doesn't fail, so the caller reads `alerts` back to see which). The
+sender loop texts it like any carer alert.
+
 ### reset_memory()
 Clears `sightings`, `item_state`, `events`, `routines`, `alerts`, `tracking` and `status`. Keeps
 `items`, `areas` and the alert schedule. For between demo runs.
@@ -242,7 +257,9 @@ Clears `sightings`, `item_state`, `events`, `routines`, `alerts`, `tracking` and
 - `events`: id (auto), item_id, type (`"placed"` | `"used"`), ts_ms, from_json, to_json.
 - `routines`: item_id, hour (0 to 23), use_count. How often each item gets used at each hour of the
   day.
-- `alerts`: id (auto), type, item_id (`""` if none), message, channel (`"spoken"` | `"carer"`),
+- `alerts`: id (auto), type (`pill_reminder`, `pills_not_taken`, `no_activity`, `left_house`,
+  `possible_fall`, `agent_request`), item_id (`""` if none), message, channel (`"spoken"` = said on
+  Nemo's speaker | `"carer"` = texted),
   ts_ms, sent (bool).
 - `tracking` (**private**, not public): the rules' working memory, one row per item. item_id (pk),
   streak_count (sightings in a row in the same area and furniture), streak_area_id,
@@ -263,7 +280,7 @@ time. A `used` event's `from_json` is `{"missing_since_ts"}` and `to_json` is th
 |---|---|---|
 | CONFIRM_FRAMES | 2 | sightings in a row in the same area and furniture before `item_state` changes |
 | FRAME_SHARP_MIN | 100 | `add_frame` sharpness must be above this for a spot to count as clearly in view |
-| IMPORTANT | 3 | importance at which "used" is tracked (the pill box) |
+| IMPORTANT | 3 | importance at which "used" is tracked (the pill bottle, item_id `pill_box`) |
 | LOCAL_UTC_OFFSET_HOURS | -6 | local hour for `routines` (Dallas, CST) |
 | OUTDOORS_MIN_MS | 120000 | outdoors for this long (2 min) = left the house |
 
@@ -305,7 +322,7 @@ After each kept frame (`vl.after_frame`), in the background:
   Nothing is written directly.
 - **Pill box fallback**: if Super VL says unsure (or can't be asked: box under 80 px, or the call
   failed) and YOLOE's wording was a pill-box wording with confidence at least 0.30 (the detection
-  floor is 0.20), the sighting is reported as `pill_box` the same way. Only the pill box: it's the
+  floor is 0.20), the sighting is reported as `pill_box` the same way. Only the pill bottle: it's the
   item the reminders and carer alerts depend on, and nothing else we track looks like one. The
   2-in-a-row rule still applies, so one such frame changes nothing.
 - **Spot description**: when a sighting from this frame made Spacetime place an item
@@ -314,10 +331,6 @@ After each kept frame (`vl.after_frame`), in the background:
   `set_spot_description` stores it. `where_is` returns it as `spot_description`.
 - **Scene check** (`VL_SCENE_CHECK`, every `VL_SCENE_EVERY_S` = 60 s): indoors or outdoors from the
   newest kept frame, whole frame at 512 px, written with `set_scene`.
-
-### Still to define (by build step)
-- Step 7: how the fall check reaches Spacetime and raises `alerts`.
-- Step 8: how reminders are picked from `routines` and sent to Nemo's `/play`.
 
 ## 4. Agent tools (Nemotron 3.5 Lightning, OpenAI-style function calling)
 
@@ -347,18 +360,33 @@ OpenRouter.
   desk frames: "is my wallet open or closed, and what colour is it?" -> "Your wallet is black and
   closed."
 
-Carer alerts are not an agent tool: Spacetime decides when to raise one and the backend's sender
-loop texts it (section 5). `backend/alerts.py` has `send_carer_alert()` if the agent ever needs to.
+- `send_carer_alert(reason, message)` -> `{"requested": true, "message", "say"}` or
+  `{"requested": false, "too_soon": true, "minutes_since_last", "say"}`. The agent only requests:
+  the tool calls Spacetime's `request_carer_alert("agent_request", message)`, which records an
+  unsent carer alert (at most one every 10 minutes), and the backend's sender loop texts it, so
+  `CARER_ALERTS` still decides whether anything goes out. The tool never calls Photon. `reason` is
+  `asked_to_pass_on` or `fallen_hurt_or_needs_help` (logged). The text always starts "Nemo here."
+  and is one short sentence in the wearer's words where possible, e.g. "Nemo here. They asked me to
+  tell you they're okay." `say` is the exact spoken reply ("Okay, I've let your carer know.", or
+  that a message already went a few minutes ago), so the agent never claims a text that wasn't
+  sent. Used only when the wearer asks to tell their carer or family something, or says they've
+  fallen, are hurt or need help; never on the agent's own initiative. Questions that ask to pass
+  something on ("tell", "let them know", ...; "tell me" doesn't count) skip the prefetch and get a
+  one-line hint to use the tool. Measured: 15 of 15 requests sent (5 wordings, 3 times each), 0 of
+  5 other questions ("can you tell me where my keys are?", "what's my daughter's name?", ...).
+
+Carer alerts the agent didn't ask for (pills, no activity, left the house, possible fall) are
+decided in Spacetime and sent by the sender loop (section 5).
 
 Guardrails (system prompt): Nemo only answers from its tools. It never invents names, family,
 health, places or times, says it's a device with no family or life of its own, and answers
-anything outside finding things with "I'm sorry, I can't help with that. I can help you find your
+anything outside its two jobs (finding things, passing a message to the carer) with "I'm sorry, I can't help with that. I can help you find your
 things, like your keys or glasses."
 
 Speed-ups:
 - **Prefetch:** if the question names exactly one tracked item (its name, id or an alias, as whole
   words), the backend runs `find_item` for it before the first model call (plus `item_history` for
-  importance-3 items, the pill box) and puts the results in the conversation as tool calls. A plain
+  importance-3 items, the pills) and puts the results in the conversation as tool calls. A plain
   "where's my X?" then needs one Nemotron call instead of two. Other questions use the normal loop.
 - `items` and `areas` are cached in memory for 60 s; `item_state` is always read fresh.
 - Whisper is warmed up at startup, so the first question isn't slower than the rest.
@@ -386,17 +414,21 @@ Photon free/pro plans use a shared line that only texts numbers that are BOTH ad
 the Photon dashboard AND have texted the shared line first (any message). Until then sends fail
 with `PERMISSION_DENIED: Target not allowed for this project`. Business gives a dedicated line.
 
-### Carer alerts decided in Spacetime (built)
-Spacetime decides WHEN; the backend only sends.
+### Alerts decided in Spacetime (built)
+Spacetime decides WHEN; the backend only delivers. Every message follows the brand word list: plain,
+kind, a nudge to check in, no alarm words, no medical claims.
 
-- `check_alerts` (every 60 s) and `run_alert_checks_now` write rows to `alerts` with channel
-  `"carer"`, sent `false`. At most one alert per type per local day, and never while an unsent one
-  of that type exists.
-- **pills_not_taken** (item_id `pill_box`): the usual hour is the hour with the highest
-  `use_count` in `routines` for the pill box, or `PILL_DUE_HOUR` if there's no routine yet. Once
-  it's past the usual hour + `PILL_GRACE_MIN` and there's no `used` event for the pill box today
-  (local day), raise: "It looks like the pills haven't been taken yet today. Last seen: <area,
-  furniture>."
+- `check_alerts` (every 60 s) and `run_alert_checks_now` write unsent rows to `alerts`. At most one
+  per type and channel per local day, and never while an unsent one of that type exists.
+- **pill_reminder** (channel `"spoken"`, item_id `pill_box`): the usual hour is the hour with the
+  highest `use_count` in `routines` for the pill bottle, or `PILL_DUE_HOUR` if there's no routine
+  yet. From the usual hour to `PILL_REMINDER_WINDOW_MIN` (15) after it, if there's no `used` event
+  for the pill bottle today (local day): "Hi, it's Nemo. It's about the usual time for your pills."
+  Said on Nemo's speaker. It always comes before the carer text below.
+- **pills_not_taken** (channel `"carer"`, item_id `pill_box`): once it's past the usual hour +
+  `PILL_GRACE_MIN` and still no `used` event today: "Nemo here. The pill bottle hasn't moved by its
+  usual time. You may want to check in." plus, if it has been placed, "It was last seen on the
+  desk." (furniture, and "by the <area>" when that's different).
 - **no_activity** (item_id `""`): between `DAY_START_HOUR` and `DAY_END_HOUR` local, if there's been
   no `placed` or `used` event and no `add_frame` for `NO_ACTIVITY_MIN`, raise: "No activity seen for
   about N hours." Not raised if nothing has ever been seen (the device is probably off).
@@ -404,6 +436,11 @@ Spacetime decides WHEN; the backend only sends.
   wearer has been outdoors for `OUTDOORS_MIN_MS` (2 min), `check_alerts` writes a `left_house`
   alert ("It looks like they've left the house (outdoors for about N minutes)"). Coming back
   indoors resets the stretch.
+- **possible_fall** (channel `"carer"`): raised by `report_possible_fall` (below), not by
+  `check_alerts`: "Nemo here. Nemo has only seen the floor or the ceiling for about a minute. You
+  may want to check in." At most one every 30 minutes.
+- **agent_request** (channel `"carer"`): raised by `request_carer_alert` for the agent's
+  `send_carer_alert` tool (section 4). At most one every 10 minutes.
 
 | constant (top of the module) | value |
 |---|---|
@@ -411,24 +448,41 @@ Spacetime decides WHEN; the backend only sends.
 | PILL_ITEM_ID | `pill_box` |
 | PILL_DUE_HOUR | 9 (local) |
 | PILL_GRACE_MIN | 60 |
+| PILL_REMINDER_WINDOW_MIN | 15 |
+| FALL_ALERT_EVERY_MS | 1800000 (30 min) |
+| AGENT_REQUEST_EVERY_MS | 600000 (10 min) |
 | DAY_START_HOUR, DAY_END_HOUR | 8, 21 (local) |
 | NO_ACTIVITY_MIN | 180 |
 | LOCAL_UTC_OFFSET_HOURS | -6 (local day and hour) |
 
-Backend sender loop (`backend/alerts.py`, started with the FastAPI app): every 5 s it reads
-`SELECT * FROM alerts WHERE channel = 'carer' AND sent = false`, texts each through the notifier,
-and calls `mark_alert_sent(id, true)`. If the notifier fails it leaves the row unsent and retries
-next round, up to 3 tries per alert (counted in memory, so a backend restart tries again). An
-alert it gave up on stays unsent, which blocks new alerts of that type until it's cleared.
+Backend sender loop (`backend/alerts.py`, started with the FastAPI app, always running): every 5 s
+it reads `SELECT * FROM alerts WHERE sent = false` and delivers each:
+- channel `"carer"`: texted through the notifier, only while `CARER_ALERTS` is on;
+- channel `"spoken"`: `speech.speak(message)` (the same voice as answers), then `POST {NEMO_URL}/play`
+  (multipart `file`), whatever `CARER_ALERTS` says.
+Then `mark_alert_sent(id, true)`. If delivery fails (notifier down, Nemo unreachable) the row stays
+unsent and is retried next round, up to 3 tries per alert (counted in memory, so a backend restart
+tries again; a spoken alert's WAV is made once and reused). An alert it gave up on stays unsent,
+which blocks new alerts of that type until it's cleared.
 
-**While the backend runs with `CARER_ALERTS=on` (the default), these are real texts to `CARER_PHONE`.** Set `CARER_ALERTS=off` in `.env` for testing: `notify()` then never contacts the notifier (so nothing is texted by any route) and the sender loop doesn't run. Alerts are still raised in Spacetime and stay unsent; `reset_memory` clears them, and turning it back on sends any that are still waiting.
+**While the backend runs with `CARER_ALERTS=on` (the default), carer alerts are real texts to `CARER_PHONE`.** Set `CARER_ALERTS=off` in `.env` for testing: `notify()` then never contacts the notifier (so nothing is texted by any route) and carer rows are left unsent. Spoken alerts still play on Nemo. `reset_memory` clears all alerts, and turning `CARER_ALERTS` back on sends any carer alerts still waiting.
 
-### Still to build
+### Possible fall (built, `backend/fall.py`)
+Nemo has no motion sensor, so this is camera only. `frames.handle()` passes every frame Nemo
+returns (kept or dropped by vision) to `fall.observe()` first (a few ms: decoded at 1/4 size).
+A frame is suspicious if it's very dark (mean grey under 25 of 255: lying face down or covered) or
+a still, featureless view (grey spread under 12 and almost no change since the last frame: a floor
+or ceiling). Normal frames of the dim hotel room never go below 45 and 25 (303 frames checked, none
+suspicious). After `FALL_WINDOW_S` (45) of suspicious frames in a row, with no gap over 10 s (a
+switched-off Nemo never counts), the newest frame goes once to Super VL in the `vl.py` worker:
+"Does this look like a floor or ceiling seen by someone who has fallen, or a camera lying face
+down? Answer yes or no." Yes -> `report_possible_fall(ts_ms)`. Any normal frame starts again.
+`FALL_CHECK=off` turns it off; it needs `SUPER_VL` on to confirm.
 
-- **Spoken to the wearer** (the backend POSTs a WAV to Nemo's `/play`): reminders, e.g. around the usual pill time.
-- **Texted to the carer** (through Photon):
-  - possible fall: a jolt, then black or a fixed floor/ceiling view for 30 to 60 s, confirmed by
-    Super VL.
+`backend/demo_fall.py` shows it end to end for the video: by default it posts a dark frame to the
+running backend's `/frame` once a second for `FALL_WINDOW_S` + 10 s (so the real check fires);
+`--here` calls the same `fall.observe()` in-process with a fake clock (a few seconds). Measured
+through the backend: 45 s of dark frames -> Super VL "Yes." in 0.9 s -> `possible_fall` alert.
 
 ## 6. Environment variables (see .env.example)
 

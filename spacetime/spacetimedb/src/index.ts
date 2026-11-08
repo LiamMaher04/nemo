@@ -23,10 +23,20 @@ const ALERT_CHECK_EVERY_MS = 60_000; // how often check_alerts runs
 const PILL_ITEM_ID = 'pill_box';
 const PILL_DUE_HOUR = 9; // local hour pills are due if routines has nothing yet
 const PILL_GRACE_MIN = 60; // minutes after the usual hour before "pills not taken" is raised
+const PILL_REMINDER_WINDOW_MIN = 15; // spoken reminder to the wearer: from the usual hour to this many minutes after
 const DAY_START_HOUR = 8; // local daytime window for no_activity
 const DAY_END_HOUR = 21;
 const NO_ACTIVITY_MIN = 180; // no placed/used event and no add_frame for this long = no_activity
 const OUTDOORS_MIN_MS = 120_000; // Super VL has said "outdoors" for this long = left the house
+const FALL_ALERT_EVERY_MS = 30 * 60_000; // at most one possible_fall alert this often
+const AGENT_REQUEST_EVERY_MS = 10 * 60_000; // at most one agent_request (send_carer_alert) this often
+const AGENT_REQUEST_MAX_CHARS = 300; // longest message the agent may ask to send
+
+// What a person hears or reads (brand voice: plain, kind, no alarm words, no medical claims).
+const PILL_REMINDER_TEXT = "Hi, it's Nemo. It's about the usual time for your pills.";
+const PILLS_NOT_MOVED_TEXT = "Nemo here. The pill bottle hasn't moved by its usual time. You may want to check in.";
+const POSSIBLE_FALL_TEXT =
+  'Nemo here. Nemo has only seen the floor or the ceiling for about a minute. You may want to check in.';
 
 // What can be tracked. Seeded for the demo.
 const items = table(
@@ -442,13 +452,18 @@ function localMinuteOfDay(ts_ms: number): number {
   return ((m % 1440) + 1440) % 1440;
 }
 
-// Raise a carer alert unless one of this type was already raised today, or one is still unsent.
-function raiseCarerAlert(ctx: Ctx, now_ms: number, type: string, item_id: string, message: string) {
+// Raise an alert unless one of this type and channel was already raised today, or one is still unsent.
+// channel "carer" = texted to the carer through Photon; "spoken" = said on Nemo's speaker.
+function raiseAlert(ctx: Ctx, now_ms: number, type: string, item_id: string, message: string, channel: string) {
   for (const a of ctx.db.alerts.iter()) {
-    if (a.channel !== 'carer' || a.type !== type) continue;
+    if (a.channel !== channel || a.type !== type) continue;
     if (!a.sent || localDay(a.ts_ms) === localDay(now_ms)) return;
   }
-  ctx.db.alerts.insert({ id: 0n, type, item_id, message, channel: 'carer', ts_ms: now_ms, sent: false });
+  ctx.db.alerts.insert({ id: 0n, type, item_id, message, channel, ts_ms: now_ms, sent: false });
+}
+
+function raiseCarerAlert(ctx: Ctx, now_ms: number, type: string, item_id: string, message: string) {
+  raiseAlert(ctx, now_ms, type, item_id, message, 'carer');
 }
 
 function pillUsualHour(ctx: Ctx): number {
@@ -460,28 +475,41 @@ function pillUsualHour(ctx: Ctx): number {
   return best ? best.hour : PILL_DUE_HOUR;
 }
 
-function lastSeenText(ctx: Ctx, item_id: string): string {
+// "It was last seen on the desk." for a placed item, or "" when there's nothing natural to say.
+function lastSeenSentence(ctx: Ctx, item_id: string): string {
   const s = ctx.db.item_state.item_id.find(item_id);
-  if (!s || s.state !== 'placed') return 'not seen yet';
-  const area = ctx.db.areas.area_id.find(s.area_id)?.name ?? s.area_id;
-  if (!s.furniture || s.furniture.toLowerCase() === area.toLowerCase()) return area;
-  return `${area}, ${s.furniture}`;
+  if (!s || s.state !== 'placed') return '';
+  const area = s.area_id ? (ctx.db.areas.area_id.find(s.area_id)?.name ?? s.area_id.replace(/_/g, ' ')) : '';
+  const furniture = s.furniture.replace(/_/g, ' ');
+  let where = '';
+  if (furniture) where = `on the ${furniture}` + (area && area.toLowerCase() !== furniture.toLowerCase() ? ` by the ${area}` : '');
+  else if (area) where = `by the ${area}`;
+  return where ? ` It was last seen ${where}.` : '';
+}
+
+function pillsUsedToday(ctx: Ctx, now_ms: number): boolean {
+  const today = localDay(now_ms);
+  for (const e of ctx.db.events.iter()) {
+    if (e.item_id === PILL_ITEM_ID && e.type === 'used' && localDay(e.ts_ms) === today) return true;
+  }
+  return false;
+}
+
+// Spoken to the wearer first: from the usual hour to PILL_REMINDER_WINDOW_MIN after, once a day.
+// The carer text below only comes PILL_GRACE_MIN after the usual hour, so the wearer always hears first.
+function checkPillReminder(ctx: Ctx, now_ms: number) {
+  const start = pillUsualHour(ctx) * 60;
+  const minute = localMinuteOfDay(now_ms);
+  if (minute < start || minute >= start + PILL_REMINDER_WINDOW_MIN) return;
+  if (pillsUsedToday(ctx, now_ms)) return;
+  raiseAlert(ctx, now_ms, 'pill_reminder', PILL_ITEM_ID, PILL_REMINDER_TEXT, 'spoken');
 }
 
 function checkPills(ctx: Ctx, now_ms: number) {
   const dueMinute = pillUsualHour(ctx) * 60 + PILL_GRACE_MIN;
   if (localMinuteOfDay(now_ms) < dueMinute) return;
-  const today = localDay(now_ms);
-  for (const e of ctx.db.events.iter()) {
-    if (e.item_id === PILL_ITEM_ID && e.type === 'used' && localDay(e.ts_ms) === today) return;
-  }
-  raiseCarerAlert(
-    ctx,
-    now_ms,
-    'pills_not_taken',
-    PILL_ITEM_ID,
-    `It looks like the pills haven't been taken yet today. Last seen: ${lastSeenText(ctx, PILL_ITEM_ID)}.`
-  );
+  if (pillsUsedToday(ctx, now_ms)) return;
+  raiseCarerAlert(ctx, now_ms, 'pills_not_taken', PILL_ITEM_ID, PILLS_NOT_MOVED_TEXT + lastSeenSentence(ctx, PILL_ITEM_ID));
 }
 
 function checkNoActivity(ctx: Ctx, now_ms: number) {
@@ -512,6 +540,7 @@ function checkLeftHouse(ctx: Ctx, now_ms: number) {
 }
 
 function runAlertChecks(ctx: Ctx, now_ms: number) {
+  checkPillReminder(ctx, now_ms);
   checkPills(ctx, now_ms);
   checkNoActivity(ctx, now_ms);
   checkLeftHouse(ctx, now_ms);
@@ -544,6 +573,40 @@ export const run_alert_checks_now = spacetimedb.reducer(
   (ctx, { now_ms }) => {
     ensureAlertSchedule(ctx);
     runAlertChecks(ctx, now_ms > 0 ? now_ms : serverNowMs(ctx));
+  }
+);
+
+// The backend's fall check: frames very dark or a still, featureless view for FALL_WINDOW_S, and
+// Super VL said it looks like a floor or ceiling, or a camera lying face down. At most one
+// possible_fall alert every FALL_ALERT_EVERY_MS (not once a day: a second fall later still counts).
+export const report_possible_fall = spacetimedb.reducer(
+  { ts_ms: t.f64() },
+  (ctx, { ts_ms }) => {
+    const now_ms = ts_ms > 0 ? ts_ms : serverNowMs(ctx);
+    for (const a of ctx.db.alerts.iter()) {
+      if (a.type === 'possible_fall' && Math.abs(now_ms - a.ts_ms) < FALL_ALERT_EVERY_MS) return;
+    }
+    ctx.db.alerts.insert({
+      id: 0n, type: 'possible_fall', item_id: '', message: POSSIBLE_FALL_TEXT, channel: 'carer', ts_ms: now_ms, sent: false,
+    });
+  }
+);
+
+// The agent's send_carer_alert tool. The agent only requests: this records an unsent carer alert,
+// and the backend's sender loop texts it (so CARER_ALERTS still decides whether anything is sent).
+// At most one agent_request every AGENT_REQUEST_EVERY_MS: a request too soon (or with an unknown
+// type or no text) writes nothing. The tool reads alerts back to see whether its row was written.
+export const request_carer_alert = spacetimedb.reducer(
+  { type: t.string(), message: t.string() },
+  (ctx, { type, message }) => {
+    if (type !== 'agent_request') return;
+    const text = message.trim().slice(0, AGENT_REQUEST_MAX_CHARS);
+    if (!text) return;
+    const now_ms = serverNowMs(ctx);
+    for (const a of ctx.db.alerts.iter()) {
+      if (a.type === 'agent_request' && now_ms - a.ts_ms < AGENT_REQUEST_EVERY_MS) return;
+    }
+    ctx.db.alerts.insert({ id: 0n, type, item_id: '', message: text, channel: 'carer', ts_ms: now_ms, sent: false });
   }
 );
 

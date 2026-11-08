@@ -16,7 +16,8 @@ If something else seems needed, suggest it and wait.
 
 - Always call the product **Nemo**, or "the device" for the hardware. Never "the clip".
 - Name comes from Mnemosyne, Greek goddess of memory.
-- Demo objects: **keys, glasses, TV remote**. A **pill box** for the reminders and carer alerts.
+- Demo objects: **keys, glasses, TV remote**. A **pill bottle** for the reminders and carer alerts
+  (seeded as "pills"; its item_id stays `pill_box`, which Spacetime's PILL_ITEM_ID relies on).
 - Demo: put the remote down, walk away, hold the button, ask "where's my remote?", hear "On the arm
   of the sofa in the living room, 4 minutes ago".
 
@@ -40,9 +41,12 @@ If something else seems needed, suggest it and wait.
   once a minute, and is a tool the agent uses to double-check a location or confirm a fall.
 - **Nemotron 3.5 Lightning:** the agent.
 
-Agent tools: `find_item`, `where_is`, `item_history`, `look_at_snapshot` (Super VL). Carer alerts
-are decided in Spacetime (`check_alerts`) and texted by the backend's sender loop through Photon,
-not by the agent. Details in `docs/interfaces.md`.
+Agent tools: `find_item`, `where_is`, `item_history`, `look_at_snapshot` (Super VL),
+`send_carer_alert` (only when the wearer asks to tell their carer or family something, or says
+they've fallen, are hurt or need help). The agent only requests: the tool calls Spacetime's
+`request_carer_alert`, which records the alert (one every 10 minutes at most), and the backend's
+sender loop texts it through Photon, so CARER_ALERTS still decides. The other carer alerts are
+decided in Spacetime (`check_alerts`, `report_possible_fall`). Details in `docs/interfaces.md`.
 
 ## Architecture
 
@@ -93,20 +97,22 @@ is fine: the last place Nemo saw it is still a useful answer.
   If an important item's furniture is clearly in view (sharp frame) and the item isn't there, it's
   marked missing. `item_state` doesn't change: looking the other way, or a blurry frame, changes
   nothing.
-- **Used:** an important item (the pill box) that was missing from its furniture in a sharp frame
+- **Used:** an important item (the pill bottle) that was missing from its furniture in a sharp frame
   is seen back on the same furniture in the same area. That writes a `used` event and adds to
   `routines` for that hour. A sign the pills were taken, not proof.
 - **Small DINOv2 margin** (two look-alikes are close): store both candidates, change neither item.
 
 ## Alerts
 
-- **Spoken reminders to the wearer** on Nemo's speaker, e.g. around their usual pill time.
-- **Carer texts via Photon:**
+- **Spoken reminders to the wearer** on Nemo's speaker: the pill reminder, in the 15 minutes from
+  their usual pill time (channel "spoken" in `alerts`; played whatever CARER_ALERTS says).
+- **Carer texts via Photon** (all start "Nemo here.", a nudge to check in, no medical claims):
   - left the house (Super VL says outdoors);
-  - pills not taken by the usual time;
-  - possible fall: a jolt, then black or a fixed floor/ceiling view for 30 to 60 s, confirmed by
-    Super VL;
-  - no activity for hours during the daytime.
+  - pills not taken by the usual time (an hour after the reminder, so the wearer hears first);
+  - possible fall: no motion sensor, so camera only. 45 s of very dark or still, featureless frames,
+    confirmed by Super VL (`backend/fall.py`, demo: `backend/demo_fall.py`);
+  - no activity for hours during the daytime;
+  - the wearer asked the agent to pass something on (`send_carer_alert`).
 
 ## Repo layout and owners
 
@@ -128,8 +134,8 @@ is fine: the last place Nemo saw it is still a useful answer.
    reference photos instead.
 5. `/ask` voice + agent. Done.
 6. Super VL spot description. Done, plus second opinions, `look_at_snapshot` and the indoors check.
-7. Photon alerts + the outdoor check. Done, except the fall check.
-8. Routines, "used", spoken reminders. Routines and "used" done; spoken reminders not built.
+7. Photon alerts + the outdoor check. Done, with the camera-based fall check and `send_carer_alert`.
+8. Routines, "used", spoken reminders. Done (the spoken pill reminder).
 9. Video and rehearsal.
 
 A crude end-to-end loop beats any polished part. Get the loop working first.

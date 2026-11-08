@@ -41,6 +41,10 @@ VL_SECOND_OPINION: bool = _clean(os.getenv("VL_SECOND_OPINION"), "on").lower() n
 VL_SCENE_CHECK: bool = _clean(os.getenv("VL_SCENE_CHECK"), "on").lower() not in ("off", "false", "0", "no")
 VL_SCENE_EVERY_S: int = int(_clean(os.getenv("VL_SCENE_EVERY_S"), "60"))
 VL_TIMEOUT_S: float = float(_clean(os.getenv("VL_TIMEOUT_S"), "12"))
+# Possible-fall check (backend/fall.py): this many seconds in a row of very dark or still, featureless
+# frames, then Super VL confirms, then Spacetime's report_possible_fall raises a carer alert.
+FALL_CHECK: bool = _clean(os.getenv("FALL_CHECK"), "on").lower() not in ("off", "false", "0", "no")
+FALL_WINDOW_S: float = float(_clean(os.getenv("FALL_WINDOW_S"), "45"))
 
 NOTIFIER_PORT: int = int(_clean(os.getenv("NOTIFIER_PORT"), "8100"))
 NOTIFIER_URL: str = f"http://127.0.0.1:{NOTIFIER_PORT}"

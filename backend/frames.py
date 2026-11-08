@@ -229,6 +229,12 @@ def warm_up() -> None:
 def handle(jpeg: bytes) -> dict[str, Any]:
     """Process one frame if nothing else is being processed. Never raises."""
     global _next_frame_id
+    # Every frame Nemo returns goes to the fall check first, whatever vision then does with it.
+    try:
+        from backend import fall
+        fall.observe(jpeg)
+    except Exception as exc:
+        log.warning("fall check failed: %s", exc)
     if answering.is_set():
         stats["skipped_busy"] += 1
         return {"skipped": "answering"}

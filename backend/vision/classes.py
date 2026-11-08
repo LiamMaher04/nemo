@@ -41,11 +41,11 @@ ITEMS: dict[str, list[str]] = {
         "small leather card wallet",
         "bifold wallet",
     ],
-    "pill_box": [
-        "pill organizer box",
-        "weekly pill organizer with compartments",
-        "plastic pill box with small lids",
-        "seven day pill box",
+    "pill_box": [  # a pill bottle; the item_id stays pill_box
+        "clear plastic pill bottle",
+        "pill bottle with white cap",
+        "small medicine bottle with pills inside",
+        "prescription pill bottle",
     ],
     "toothbrush": [
         "toothbrush",
