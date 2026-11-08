@@ -9,7 +9,8 @@ commit as the code change, and tell the team.
 - Body: raw JPEG bytes. `Content-Type: image/jpeg`.
 - Headers: `X-Device-Id: nemo-a`, `X-Frame-Ts: <ms since device boot>` (optional).
 - Response: `200 {"ok": true}`. The device ignores the body; it just keeps sending.
-- The device captures about 5 to 10 frames a second and sends only the sharpest one each second.
+- In post mode the device sends one frame a second (the plan was the sharpest of 5 to 10). The
+  demo runs pull mode instead (below), where the backend picks the sharpest.
 - Resolution 1024 px wide or more (XGA, 1024x768; keys are tiny).
 - The backend also drops blurry and near-duplicate frames before running any models.
 - The reply comes straight away (`{"ok": true}`, or `{"ok": true, "skipped": "busy"}`); vision
@@ -17,8 +18,10 @@ commit as the code change, and tell the team.
 
 ### Frame source (`FRAME_SOURCE` in `.env`)
 - `post` (default): Nemo POSTs each JPEG to `/frame`, as above.
-- `pull`: the backend fetches Nemo's `GET /jpg` at `NEMO_JPG_URL` (e.g. `http://172.20.10.9/jpg`)
-  once a second.
+- `pull` (what the demo runs): every second the backend fetches Nemo's `GET /jpg` at
+  `NEMO_JPG_URL` (e.g. `http://172.20.10.9/jpg`) `BURST_FRAMES` (3) times back to back, scores each
+  with the vision sharpness function (about 20 ms each) and processes only the sharpest. A `503`
+  (Nemo is recording) or no answer skips that second.
 
 Both go through the same handler (`backend/frames.py`):
 1. `backend.vision.process(jpeg, frame_id, ts_ms)` (Josie's code). `frame_id` keeps counting up
@@ -32,14 +35,16 @@ Both go through the same handler (`backend/frames.py`):
   processed (or while YOLOE is loading at startup) is skipped, not queued.
 - Each frame logs vision time, Spacetime time and total. `GET /health` adds `frame_source` and
   `vision` (processed, kept, dropped, skipped_busy, spacetime_errors, avg_vision_ms_last_20).
-- Until DINOv2 area matching lands, `area_id` is `""` and `area_conf` is `0.0`.
+- `area_id` is `""` (and `area_conf` low) when DINOv2 can't tell the area from its reference
+  photos (`REFS_DIR`); see `backend/vision/README.md`.
 
 ### POST /ask
 - The wearer holds the button and asks out loud. The device records while the button is held.
 - Body: raw audio. `audio/wav`, 16 kHz, mono, 16-bit PCM. (Other rates or stereo are converted.)
 - Headers: `X-Device-Id`.
 - Backend (`backend/speech.py`, models loaded once at startup):
-  - speech to text: faster-whisper, `STT_MODEL` (default `small.en`), on CPU, int8. The audio is
+  - speech to text: faster-whisper, `STT_MODEL` (default `small.en`; the demo `.env` uses
+    `base.en`, which is faster), on CPU, int8. The audio is
     peak-normalised first (loudest sample to about 0.9, at most 30x gain, nothing if the peak is
     under 0.001), because Nemo's mic is quiet. Only for speech to text, never for what's played;
   - the same agent as `/ask_text`;
@@ -74,9 +79,13 @@ OLED). Firmware: `firmware/tests/camera_blink_audio` (Laura).
 | `POST /play` | multipart form, field `file` = a WAV (16 kHz mono 16-bit, up to 15 s): Nemo speaks it. Answers once playback has finished. |
 | `GET /play_last` | play the last recording back (mic + speaker echo test, with 8x gain). |
 
-**Asking (the button):** the firmware button will POST its recording straight to `/ask` and play
-the reply. Until that lands, `backend/talk_bridge.py` stands in for it on the laptop: hold SPACE
--> `/rec/start`, release -> `/rec/stop` -> `POST /ask` -> `POST {NEMO_URL}/play` with the reply.
+**Asking (the button):** in `camera_blink_audio` the BOOT button records while held, then POSTs
+the WAV straight to `BACKEND_ASK_URL` (the backend's `/ask`, timeout 30 s, with
+`X-Device-Id: nemo-a`) and plays the reply. If `/ask` can't be reached it plays the recording
+back instead. `BACKEND_ASK_URL` is a constant in the sketch, so it has to match the laptop's IP on
+the hotspot. `backend/talk_bridge.py` does the same from the laptop (hold SPACE -> `/rec/start`,
+release -> `/rec/stop` -> `POST /ask` -> `POST {NEMO_URL}/play`), for when the button sketch isn't
+flashed. Only run one copy (it holds a lock on port 47613).
 
 **Spoken reminders:** the backend will POST a WAV to Nemo's `/play` when there's something to say.
 This replaces the earlier plan of Nemo polling `GET /say` (not built).
@@ -85,11 +94,15 @@ The OLED only ever shows eyes (awake when on, closed when off). Nothing from the
 
 ### GET /live (the "what Nemo sees" page)
 A browser page served by the backend for demos and debugging: `http://<laptop>:8000/live`. It shows
-the latest processed frame with YOLOE's boxes drawn on it (green = identified item, amber = unsure
-with its look-alike candidates, blue = furniture), DINOv2's area vote and confidence, the sharpness
-score against the gate, kept/dropped verdicts, per-frame timings, a feed of recent frames, what
-Spacetime currently remembers (with thumbnails), and the last question and answer. Everything on it
-comes from the real pipeline output; nothing is drawn that a model didn't return.
+the latest processed frame with YOLOE's boxes drawn on it (solid coral = one of our things, dashed
+coral = not sure which, with its look-alike candidates, dashed aqua = furniture; every box is
+labelled in words too), DINOv2's area vote and confidence, the sharpness score against the gate,
+kept/dropped verdicts, per-frame timings, a feed of recent frames, what Spacetime currently
+remembers (with thumbnails and Super VL's spot sentence), the last spoken question and answer, and
+how each step works. Everything on it comes from the real pipeline output; nothing is drawn that a
+model didn't return. It follows the brand guidelines (cream, navy, Poppins and Inter, 16px labels
+and 18px text minimum, works at phone width). Fonts come from Google Fonts, with the system font
+as fallback if the laptop is offline.
 - `GET /live/state`: JSON the page polls every 0.5 s: `frame` (frame_id, kept, drop_reason,
   sharpness, sharpness_gate, area_id, area_conf, items_seen, sightings without thumbnails,
   furniture boxes, vision_ms, spacetime_ms), `stats`, `feed` (last 40 frames), `memory`
@@ -273,52 +286,49 @@ After each kept frame (`vl.after_frame`), in the background:
 
 ## 4. Agent tools (Nemotron 3.5 Lightning, OpenAI-style function calling)
 
-Built so far (`backend/agent.py`, max 5 model calls per question, thinking off, NVIDIA API first
-then OpenRouter):
+`backend/agent.py`: max 5 model calls per question, thinking off, NVIDIA API first then
+OpenRouter.
 
 - `find_item(name)` -> `{"item_id", "name", "where"}`, where `where` is the `where_is` result for
   that item (so a plain "where's my X?" needs one tool call, not two), or `{"candidates": [...]}` if
   several match, or `{"found": false, "tracked_items": [...]}`. Matches items.name, item_id,
   aliases, then attributes.
-
-Guardrails (system prompt): Nemo only answers from its tools. It never invents names, family,
-health, places or times, says it's a device with no family or life of its own, and answers
-anything outside finding things with "I'm sorry, I can't help with that. I can help you find your
-things, like your keys or glasses."
-
-`/ask` pauses vision (new frames are skipped) while it's answering, so speech to text and the agent
-get the CPU.
-
-Speed-ups in the agent (`backend/agent.py`):
-- **Prefetch:** if the question names exactly one tracked item (its name, id or an alias, as whole
-  words), the backend runs `find_item` for it before the first model call (plus `item_history` for
-  importance-3 items, the pill box) and puts the results in the conversation as tool calls. A plain
-  "where's my X?" then needs one Nemotron call instead of two. Other questions use the normal loop.
-- `items` and `areas` are cached in memory for 60 s; `item_state` is always read fresh.
-- `where_is` for an item seen with no area and no furniture returns
-  `{"seen": true, "place_known": false, "minutes_ago", "note"}`: "I saw it about N minutes ago, but
-  I couldn't tell where".
-- Whisper is warmed up at startup, so the first question isn't slower than the rest.
-- `where_is(item_id)` -> `{"tracked": true, "seen": false, "note"}` for a tracked item Nemo hasn't
-  spotted yet (answer "I haven't seen your keys yet", not "I don't keep track of that"), or spot (a
-  ready-to-say phrase such as "on the sofa by the couch"), area name, furniture, spot_description,
-  minutes_ago, confidence, candidates.
+- `where_is(item_id)` -> spot (a ready-to-say phrase such as "on the sofa by the couch"), area
+  name, furniture, spot_description (Super VL's sentence, `""` if none yet), minutes_ago,
+  confidence, candidates. For a tracked item Nemo hasn't spotted yet:
+  `{"tracked": true, "seen": false, "note"}` (answer "I haven't seen your keys yet", not "I don't
+  keep track of that"). For one seen with no area and no furniture:
+  `{"seen": true, "place_known": false, "minutes_ago", "note"}` ("I saw it about N minutes ago, but
+  I couldn't tell where").
 - `item_history(item_id)` -> the 10 newest events (type, minutes_ago, to) and `uses_by_hour` from
   `routines`.
-
 - `look_at_snapshot(item_id, question)` -> `{"item_id", "minutes_ago", "answer"}`: Nemotron 3.5
   Super VL looks at the newest saved frame that shows the item (a 640 px crop with the item boxed;
   the thumbnail in `item_state` if no frame is left on disk, with a `note`) and answers the question
   in one sentence, only from what it can see. `{"available": false, "reason"}` when Super VL is off,
   there is no photo, or it did not answer within 8 s. The agent is told to use it only when memory
   is not enough: confidence under 0.5, look-alike candidates, or the wearer asks for a detail (what
-  it is next to, what colour, open or closed). It adds about 1 to 3 s to that answer. Measured on
-  the desk frames: "is my wallet open or closed, and what colour is it?" -> "Your wallet is black
-  and closed."
+  it is next to, what colour, open or closed). It adds about 1 s to that answer. Measured on the
+  desk frames: "is my wallet open or closed, and what colour is it?" -> "Your wallet is black and
+  closed."
 
-Still to build:
-- `send_carer_alert(type, message)` as an agent tool. The Python function exists already
-  (`backend/alerts.py`, see section 5); it isn't wired into the agent yet.
+Carer alerts are not an agent tool: Spacetime decides when to raise one and the backend's sender
+loop texts it (section 5). `backend/alerts.py` has `send_carer_alert()` if the agent ever needs to.
+
+Guardrails (system prompt): Nemo only answers from its tools. It never invents names, family,
+health, places or times, says it's a device with no family or life of its own, and answers
+anything outside finding things with "I'm sorry, I can't help with that. I can help you find your
+things, like your keys or glasses."
+
+Speed-ups:
+- **Prefetch:** if the question names exactly one tracked item (its name, id or an alias, as whole
+  words), the backend runs `find_item` for it before the first model call (plus `item_history` for
+  importance-3 items, the pill box) and puts the results in the conversation as tool calls. A plain
+  "where's my X?" then needs one Nemotron call instead of two. Other questions use the normal loop.
+- `items` and `areas` are cached in memory for 60 s; `item_state` is always read fresh.
+- Whisper is warmed up at startup, so the first question isn't slower than the rest.
+- `/ask` pauses vision (new frames are skipped) while it's answering, so speech to text and the
+  agent get the CPU.
 
 ## 5. Alerts
 
@@ -387,4 +397,16 @@ alert it gave up on stays unsent, which blocks new alerts of that type until it'
 
 ## 6. Environment variables (see .env.example)
 
-All URLs and keys come from `.env`. Nothing hardcoded.
+All URLs and keys come from `.env`. Nothing hardcoded. `.env.example` lists every setting with
+its default. The demo `.env` on Liam's laptop changes these from the defaults:
+
+| setting | demo value | why |
+|---|---|---|
+| `FRAME_SOURCE` | `pull` | the backend fetches Nemo's `/jpg` |
+| `NEMO_JPG_URL`, `NEMO_URL` | `http://<Nemo's IP>/jpg`, `http://<Nemo's IP>` | shown on Nemo's OLED |
+| `REFS_DIR` | `captures/grab/sorted` | the hotel set's reference photos |
+| `SHARPNESS_GATE` | `12` | the hotel room is dim; 40 dropped almost every frame |
+| `DETECT_IMGSZ`, `DETECT_CONF` | `1024`, `0.20` | small things like keys |
+| `STT_MODEL` | `base.en` | faster than `small.en` on the laptop CPU |
+| `TTS_PROVIDER` | `elevenlabs` | voice "Brian" |
+| `CARER_ALERTS` | `off` | no real texts while testing |

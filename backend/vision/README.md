@@ -22,7 +22,7 @@ Returns a `VisionResult`:
 | `sharpness` | variance of the Laplacian on the full-resolution greyscale frame, filled for every frame |
 | `sightings` | one dict per item, keys in `add_sighting` order (14). `[]` if dropped |
 | `frame` | one dict, keys in `add_frame` order (7). `None` if dropped |
-| `furniture_boxes` | `(name, [x, y, w, h], conf)`, only for drawing |
+| `furniture_boxes` | `(name, wording, [x, y, w, h], conf)`, only for drawing (the live page and `--show`) |
 | `ms` | time spent in `process()` (also `yoloe_ms` and `dino_ms`) |
 | `area` | this frame's area vote and scores, for printing |
 
@@ -167,6 +167,10 @@ and file paths outside the frame list are refused).
 | `AREA_VOTE_MIN` | `0.5` | the winning area's share of the votes, else `area_id` is `""` |
 | `ITEM_SIM_MIN` | `0.40` | below this best similarity the item is ambiguous |
 | `ITEM_MARGIN_MIN` | `0.05` | below this margin the item is ambiguous |
+
+These are the code defaults. The demo `.env` overrides some of them for the dim hotel room
+(`SHARPNESS_GATE=12`, `DETECT_IMGSZ=1024`, `DETECT_CONF=0.20`, `REFS_DIR=captures/grab/sorted`);
+see `docs/interfaces.md` section 6.
 
 The device is picked automatically: mps, then cuda, then cpu. The YOLOE text encoder
 (`mobileclip2_b.ts`) is downloaded next to the weights on first use.

@@ -40,21 +40,26 @@ If something else seems needed, suggest it and wait.
   once a minute, and is a tool the agent uses to double-check a location or confirm a fall.
 - **Nemotron 3.5 Lightning:** the agent.
 
-Agent tools: `find_item`, `where_is`, `item_history`, `look_at_snapshot` (Super VL),
-`send_carer_alert` (Photon). Details in `docs/interfaces.md`.
+Agent tools: `find_item`, `where_is`, `item_history`, `look_at_snapshot` (Super VL). Carer alerts
+are decided in Spacetime (`check_alerts`) and texted by the backend's sender loop through Photon,
+not by the agent. Details in `docs/interfaces.md`.
 
 ## Architecture
 
 ```
-Nemo device (ESP32-S3 camera, Arduino)
-  | captures ~5-10 frames/s, sends the sharpest each second (1024 px+), POST /frame
-  | hold button: records 16 kHz mono WAV, POST /ask, plays the WAV it gets back
-  |   (until the firmware button lands, backend/talk_bridge.py does this from the laptop)
+Nemo device (ESP32-S3 camera, Arduino; firmware/tests/camera_blink_audio)
+  | serves GET /jpg (1024 px+); the backend pulls 3 frames each second and keeps the sharpest
+  |   (FRAME_SOURCE=pull; POST /frame still works for FRAME_SOURCE=post)
+  | hold BOOT: records 16 kHz mono WAV, POST /ask, plays the WAV it gets back
+  |   (backend/talk_bridge.py does the same from the laptop if the button sketch isn't flashed)
   | reminders: the backend POSTs a WAV to Nemo's /play
   v
 backend/ (Python, FastAPI, on the laptop)
   drop blurry and near-duplicate frames -> YOLOE (items + furniture) -> DINOv2 (area, look-alikes)
   | HTTP: add_sighting per item seen, then add_frame once per kept frame
+  | backend/vl.py: Super VL in one background worker (second opinions, spot descriptions,
+  |   indoors check). Never on the frame loop or the question path.
+  | /live: the "what Nemo sees" page for demos
   v
 spacetime/ (SpacetimeDB module in TypeScript)
   tables + reducers: last seen, used, item_state, routines, alerts
@@ -109,14 +114,15 @@ is fine: the last place Nemo saw it is still a useful answer.
 
 ## Build order (do not skip ahead)
 
-1. Frames to `/frame` (firmware + endpoint).
-2. Spacetime tables and the last-seen reducer, plus seed data for the demo items and areas.
-3. Vision v1 (Josie).
-4. Teach YOLOE on footage from the hotel and the demo room.
-5. `/ask` voice + agent.
-6. Super VL spot description.
-7. Photon alerts + the outdoor check.
-8. Routines, "used", spoken reminders.
+1. Frames to `/frame` (firmware + endpoint). Done (pull mode).
+2. Spacetime tables and the last-seen reducer, plus seed data for the demo items and areas. Done.
+3. Vision v1 (Josie). Done, with DINOv2.
+4. Teach YOLOE on footage from the hotel and the demo room. Not done: text prompts plus DINOv2
+   reference photos instead.
+5. `/ask` voice + agent. Done.
+6. Super VL spot description. Done, plus second opinions, `look_at_snapshot` and the indoors check.
+7. Photon alerts + the outdoor check. Done, except the fall check.
+8. Routines, "used", spoken reminders. Routines and "used" done; spoken reminders not built.
 9. Video and rehearsal.
 
 A crude end-to-end loop beats any polished part. Get the loop working first.
@@ -156,8 +162,9 @@ QR markers, the carer app, texting back, face recognition, medical claims, no-re
 
 Two demo setups. The hotel set (room "hotel room": sofa, desk, fridge, TV, bedside table, bathroom)
 is for the demo video. The venue set (room "venue") is the judging table; its areas get added once we
-see it. Both are seeded together, and Nemo only reports areas it has seen. Vision will pick which
-set's area references to load with a `DEMO_SET` setting, added when the DINOv2 branch is merged.
+see it. Both are seeded together, and Nemo only reports areas it has seen. There's no `DEMO_SET`
+setting: `REFS_DIR` points vision at one set's reference photos (the hotel set is
+`captures/grab/sorted`).
 
 ## Style
 
@@ -170,3 +177,7 @@ set's area references to load with a `DEMO_SET` setting, added when the DINOv2 b
 - Team Google Doc (source of truth for decisions and to-dos):
   https://docs.google.com/document/d/1q5qitB92fZYmmpDA1Q_zDDj2VxVUKpsluMAjhFDaU1I/edit
 - Architecture doc for the vision side: https://claude.ai/artifact/LoAKG6JUq5MGNHYrKAkE29
+- Brand guidelines (Laura): https://docs.google.com/document/d/1tesWC5oM8gG9QO-6S68wBs4lR6FZZtPq5Ya3iQLbCdM/edit
+  Anything a judge, visitor or family member sees (the live page, slides, the site, carer texts,
+  Nemo's spoken answers) follows it: cream, navy, one coral accent, Poppins and Inter, 18px text
+  minimum, and its word list (no "AI", "seniors", "database" and so on).

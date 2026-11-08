@@ -3,216 +3,290 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nemo · live</title>
+<title>Nemo live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600&display=swap" rel="stylesheet">
 <style>
+  /* Brand: Laura's Nemo Brand Guidelines (values from website/src/theme/tokens.ts).
+     Cream and navy do the work, coral marks the one thing to notice (our things on camera),
+     aqua is for small accents and furniture. Hairlines instead of cards and shadows. */
   :root {
-    --bg: #070b12; --panel: #0d141f; --panel-2: #111b29; --line: #1c2a3d;
-    --text: #e6edf7; --muted: #7f93ad; --dim: #4b5c73;
-    --item: #39ff9a; --maybe: #ffb02e; --furn: #4cc3ff; --drop: #ff4d6d; --area: #b58cff;
-    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, "SF Mono", monospace;
-    --sans: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    --navy: #1B3A5B; --cream: #F7F3EC; --charcoal: #2B2B2B; --coral: #FF7A59; --aqua: #3B9FA6;
+    --muted: #5C5A57;                     /* charcoal on cream, about 6:1 */
+    --line: rgba(27, 58, 91, .16);        /* navy hairline on cream */
+    --wash: rgba(27, 58, 91, .05);
+    --heading: Poppins, ui-sans-serif, system-ui, sans-serif;
+    --body: Inter, ui-sans-serif, system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
-  body {
-    background:
-      radial-gradient(1200px 600px at 20% -10%, rgba(76,195,255,.10), transparent 60%),
-      radial-gradient(900px 500px at 100% 110%, rgba(57,255,154,.08), transparent 60%),
-      var(--bg);
-  }
-  header {
-    display: flex; align-items: center; gap: 18px; padding: 14px 22px; border-bottom: 1px solid var(--line);
-    background: rgba(7,11,18,.7); backdrop-filter: blur(8px); position: sticky; top: 0; z-index: 5;
-  }
-  .brand { display: flex; align-items: baseline; gap: 10px; }
-  .brand h1 { margin: 0; font-size: 20px; letter-spacing: .14em; font-weight: 700; }
-  .brand span { color: var(--muted); font-size: 12px; letter-spacing: .22em; text-transform: uppercase; }
-  .live { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--item); letter-spacing: .2em; }
-  .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--item); box-shadow: 0 0 0 0 rgba(57,255,154,.7); animation: pulse 1.6s infinite; }
-  .live.stale { color: var(--drop); } .live.stale i { background: var(--drop); animation: none; box-shadow: none; }
-  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(57,255,154,.6);} 70% { box-shadow: 0 0 0 10px rgba(57,255,154,0);} 100% { box-shadow: 0 0 0 0 rgba(57,255,154,0);} }
+  html { background: var(--cream); }
+  body { margin: 0; background: var(--cream); color: var(--charcoal); font-family: var(--body);
+         font-size: 18px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  h1, h2, h3 { font-family: var(--heading); font-weight: 600; color: var(--navy); margin: 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  .label { font-size: 16px; font-weight: 500; color: var(--muted); line-height: 1.6; }
+
+  /* Header */
+  header { display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+           padding: 22px 40px; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 18px; }
+  .brand svg { height: 32px; width: auto; display: block; }
+  .brand h1 { font-size: 24px; line-height: 1.3; letter-spacing: -.01em; }
+  .status { display: inline-flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 500; color: var(--navy); }
+  .status i { width: 12px; height: 12px; border-radius: 50%; background: var(--aqua); }
+  .status.stale i { background: transparent; border: 2px solid var(--navy); }
   .spacer { flex: 1; }
-  .hud { display: flex; gap: 22px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
-  .hud b { color: var(--text); font-weight: 600; }
+  .hud { display: flex; gap: 28px; flex-wrap: wrap; }
+  .hud div { font-size: 16px; color: var(--muted); }
+  .hud b { color: var(--navy); font-weight: 600; }
 
-  main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, .9fr); gap: 18px; padding: 18px 22px; }
-  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  /* Layout */
+  main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(340px, 1fr); gap: 48px; padding: 32px 40px 56px; }
+  .col { display: flex; flex-direction: column; gap: 40px; min-width: 0; }
+  section > .head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px; }
+  section > .head h2 { font-size: 26px; line-height: 1.3; letter-spacing: -.01em; }
+  section > .head .label { margin-left: auto; }
 
-  .panel { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-  .panel h2 { margin: 0; padding: 12px 16px; font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
-  .panel h2 .right { margin-left: auto; font-family: var(--mono); letter-spacing: 0; text-transform: none; color: var(--dim); }
-
-  .stage { position: relative; background: #000; aspect-ratio: 4 / 3; }
+  /* Camera */
+  .stage { position: relative; aspect-ratio: 4 / 3; background: var(--navy); border-radius: 16px; overflow: hidden; }
   .stage img, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .stage img { object-fit: contain; transition: filter .3s; }
-  .stage.dropped img { filter: grayscale(.7) brightness(.55); }
-  .stage .corner { position: absolute; font-family: var(--mono); font-size: 12px; color: var(--muted); background: rgba(7,11,18,.72); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; backdrop-filter: blur(6px); }
-  .stage .tl { top: 12px; left: 12px; } .stage .tr { top: 12px; right: 12px; text-align: right; }
-  .stage .bl { bottom: 12px; left: 12px; } .stage .br { bottom: 12px; right: 12px; text-align: right; }
-  .stage .corner b { color: var(--text); font-weight: 600; }
-  .area-badge { display: inline-flex; align-items: center; gap: 8px; color: var(--area); font-weight: 600; font-size: 14px; }
-  .area-badge small { color: var(--muted); font-weight: 400; }
-  .verdict { font-weight: 700; letter-spacing: .12em; }
-  .verdict.kept { color: var(--item); } .verdict.drop { color: var(--drop); }
-  .meter { width: 160px; height: 6px; background: #1a2638; border-radius: 4px; overflow: hidden; margin-top: 6px; position: relative; }
-  .meter > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--drop), var(--maybe) 40%, var(--item)); transition: width .3s; }
-  .meter > s { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; opacity: .8; }
-  .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-family: var(--mono); font-size: 13px; letter-spacing: .1em; }
+  .stage img { object-fit: contain; transition: filter .6s ease, opacity .6s ease; }
+  .stage.dropped img { filter: grayscale(.85); opacity: .5; }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px;
+           color: var(--cream); font-size: 20px; }
+  .readout { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+  .readout > div { padding: 18px 18px 18px 0; }
+  .readout > div + div { padding-left: 18px; border-left: 1px solid var(--line); }
+  .readout .big { font-family: var(--heading); font-weight: 600; font-size: 22px; line-height: 1.3; color: var(--navy); }
+  .readout .big .mark { display: inline-block; width: 1.1em; }
+  .meter { height: 8px; background: var(--wash); border: 1px solid var(--line); border-radius: 99px; position: relative; margin: 10px 0 6px; overflow: visible; }
+  .meter > i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--navy); border-radius: 99px; transition: width .6s ease; }
+  .meter > s { position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--charcoal); }
+  .legend { display: flex; gap: 28px; flex-wrap: wrap; padding: 14px 0 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 10px; }
+  .sw { width: 26px; height: 16px; border-radius: 4px; border: 3px solid var(--coral); flex: none; }
+  .sw.unsure { border-style: dashed; }
+  .sw.furn { border: 2px dashed var(--aqua); }
 
-  .legend { display: flex; gap: 16px; padding: 10px 16px; font-family: var(--mono); font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); flex-wrap: wrap; }
-  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
-
-  .col { display: flex; flex-direction: column; gap: 18px; }
-  .mem { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 12px; }
-  .card { background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; transition: border-color .4s, box-shadow .4s; }
-  .card.fresh { border-color: var(--item); box-shadow: 0 0 0 1px rgba(57,255,154,.25), 0 0 24px rgba(57,255,154,.12); }
-  .card .thumb { aspect-ratio: 1; background: #0a0f17 center/cover no-repeat; display: grid; place-items: center; color: var(--dim); font-size: 22px; }
-  .card .body { padding: 9px 10px 10px; }
-  .card .name { font-weight: 600; font-size: 13px; text-transform: capitalize; }
-  .card .spot { font-size: 12px; color: var(--muted); margin-top: 2px; min-height: 16px; }
-  .card .meta { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 6px; }
-  .card .meta b { color: var(--muted); font-weight: 500; }
-  .nothing { padding: 22px 16px; color: var(--dim); font-family: var(--mono); font-size: 12px; text-align: center; }
-
-  .ask { padding: 14px 16px; }
-  .ask .q { color: var(--muted); font-size: 13px; } .ask .q::before { content: "“"; } .ask .q::after { content: "”"; }
-  .ask .a { margin-top: 8px; font-size: 17px; line-height: 1.35; }
-  .ask .t { margin-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--dim); display: flex; gap: 14px; flex-wrap: wrap; }
-
-  .feed { max-height: 320px; overflow: auto; font-family: var(--mono); font-size: 12px; }
-  .feed .row { display: grid; grid-template-columns: 64px 70px 1fr 72px; gap: 10px; padding: 7px 16px; border-bottom: 1px solid rgba(28,42,61,.6); align-items: center; }
-  .feed .row:first-child { background: rgba(255,255,255,.03); }
-  .feed .id { color: var(--dim); } .feed .k { color: var(--item); } .feed .d { color: var(--drop); }
-  .feed .what { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .feed .what .f { color: var(--furn); } .feed .what .m { color: var(--maybe); } .feed .what .dimmed { color: var(--dim); }
-  .feed .ms { color: var(--dim); text-align: right; }
+  /* Feed */
+  .feed { max-height: 380px; overflow: auto; border-top: 1px solid var(--line); }
+  .row { display: grid; grid-template-columns: 76px 128px minmax(0, 1fr) 84px; gap: 16px; align-items: baseline;
+         padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 16px; }
+  .row .id, .row .ms { color: var(--muted); white-space: nowrap; }
+  .row .ms { text-align: right; }
+  .row .v { font-weight: 600; color: var(--navy); }
+  .row .v.drop { font-weight: 500; color: var(--muted); }
+  .row .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .what .q { color: var(--muted); }
   .feed::-webkit-scrollbar { width: 8px; } .feed::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
-  .chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 16px 14px; }
-  .chip { font-family: var(--mono); font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
-  .chip b { color: var(--text); font-weight: 500; }
+  /* Memory */
+  .mem { border-top: 1px solid var(--line); }
+  .thing { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 18px; padding: 16px 0 16px 0;
+           border-bottom: 1px solid var(--line); position: relative; transition: background-color .8s ease; }
+  .thing.fresh { background: rgba(59, 159, 166, .08); }
+  .thing.fresh::before { content: ""; position: absolute; left: -16px; top: 12px; bottom: 12px; width: 4px; border-radius: 4px; background: var(--aqua); }
+  .thumb { width: 76px; height: 76px; border-radius: 12px; background: var(--wash) center/cover no-repeat; border: 1px solid var(--line); }
+  .thing h3 { font-size: 20px; line-height: 1.4; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .thing h3 .tag { font-family: var(--body); font-size: 16px; font-weight: 500; color: var(--navy); }
+  .thing .spot { margin-top: 2px; }
+  .nothing { padding: 20px 0; color: var(--muted); border-top: 1px solid var(--line); }
+
+  /* Last question */
+  .ask { border-top: 1px solid var(--line); padding-top: 16px; }
+  .ask .q { color: var(--navy); font-weight: 500; }
+  .ask .a { margin-top: 8px; font-size: 22px; line-height: 1.5; color: var(--charcoal); }
+  .ask .t { margin-top: 12px; }
+
+  /* How it works */
+  dl.how { margin: 0; border-top: 1px solid var(--line); }
+  dl.how div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  dl.how dt { font-size: 16px; font-weight: 500; color: var(--navy); }
+  dl.how dd { margin: 0; font-size: 16px; color: var(--charcoal); min-width: 0; overflow-wrap: anywhere; }
+
+  @media (max-width: 1100px) {
+    main { grid-template-columns: 1fr; }
+    .readout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .readout > div:nth-child(3) { padding-left: 0; border-left: 0; }
+    .readout > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  }
+  @media (max-width: 640px) {
+    header { padding: 16px; gap: 16px; }
+    main { padding: 24px 16px 40px; gap: 40px; }
+    .hud { gap: 16px; }
+    .row { grid-template-columns: 64px minmax(0, 1fr) 72px; gap: 12px; }
+    .row .v { display: none; }
+    .row .what { white-space: normal; }
+    dl.how div { grid-template-columns: 1fr; gap: 0; }
+    .thing.fresh::before { left: -10px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
 <header>
-  <div class="brand"><h1>NEMO</h1><span>what it sees</span></div>
-  <div class="live" id="livePill"><i></i><span id="liveText">LIVE</span></div>
+  <div class="brand">
+    <!-- Laura's wordmark (website/src/components/Logo.tsx): navy letters, coral lens. -->
+    <svg viewBox="0 10 200 46" role="img" aria-label="Nemo">
+      <g fill="none" stroke="#1B3A5B" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 16V50"/><path d="M5 30A14 14 0 0 1 33 30V50"/><path d="M49 33H83A17 17 0 1 0 78 45"/>
+        <path d="M98 16V50"/><path d="M98 28A12 12 0 0 1 122 28V50"/><path d="M122 28A12 12 0 0 1 146 28V50"/>
+      </g>
+      <circle cx="178" cy="33" r="17" fill="none" stroke="#FF7A59" stroke-width="9"/>
+      <circle cx="178" cy="33" r="5.5" fill="#FF7A59"/>
+    </svg>
+    <h1>What Nemo sees</h1>
+  </div>
+  <div class="status stale" id="status" role="status"><i aria-hidden="true"></i><span id="statusText">Connecting</span></div>
   <div class="spacer"></div>
   <div class="hud">
-    <div>frame <b id="hFrame">–</b></div>
-    <div>kept <b id="hKept">0</b> / <b id="hProc">0</b></div>
-    <div>vision <b id="hVision">–</b> ms</div>
-    <div>source <b id="hSource">–</b></div>
+    <div>Frame <b class="num" id="hFrame">none yet</b></div>
+    <div>Kept <b class="num" id="hKept">0</b> of <b class="num" id="hProc">0</b></div>
+    <div>Vision <b class="num" id="hVision">waiting</b></div>
+    <div>Frames <b id="hSource">waiting</b></div>
   </div>
 </header>
 
 <main>
-  <section class="col">
-    <div class="panel">
-      <h2>Camera <span class="right" id="frameTime"></span></h2>
+  <div class="col">
+    <section aria-labelledby="camH">
+      <div class="head"><h2 id="camH">Camera</h2><span class="label num" id="frameTime"></span></div>
       <div class="stage" id="stage">
         <img id="frame" alt="">
-        <canvas id="overlay"></canvas>
-        <div class="empty" id="empty">WAITING FOR THE FIRST FRAME…</div>
-        <div class="corner tl"><span class="area-badge" id="area">◎ <span>no area yet</span></span></div>
-        <div class="corner tr"><div class="verdict" id="verdict">—</div><div id="reason" style="margin-top:3px"></div></div>
-        <div class="corner bl">sharpness <b id="sharp">–</b> <span id="gate"></span><div class="meter"><i id="meterFill"></i><s id="meterGate"></s></div></div>
-        <div class="corner br">YOLOE <b id="nBoxes">0</b> boxes · DINOv2 <b id="nItems">0</b> items<br>vision <b id="vms">–</b> ms · memory <b id="sms">–</b> ms</div>
+        <canvas id="overlay" aria-hidden="true"></canvas>
+        <div class="empty" id="empty">Waiting for the first frame from Nemo</div>
       </div>
-      <div class="legend">
-        <span><i style="background:var(--item)"></i>identified item</span>
-        <span><i style="background:var(--maybe)"></i>unsure (look-alikes)</span>
-        <span><i style="background:var(--furn)"></i>furniture</span>
-        <span><i style="background:var(--area)"></i>area (DINOv2)</span>
-        <span style="margin-left:auto">thresholds <span id="thresholds"></span></span>
+      <div class="readout">
+        <div><div class="label">Where Nemo is</div><div class="big" id="area">Not sure yet</div><div class="label" id="areaWhy">&nbsp;</div></div>
+        <div><div class="label">This frame</div><div class="big" id="verdict">Waiting</div><div class="label" id="reason">&nbsp;</div></div>
+        <div><div class="label">Sharpness</div><div class="big num" id="sharp">0</div>
+             <div class="meter" aria-hidden="true"><i id="meterFill"></i><s id="meterGate"></s></div><div class="label num" id="gate">&nbsp;</div></div>
+        <div><div class="label">Found</div><div class="big" id="found">Nothing yet</div><div class="label num" id="timing">&nbsp;</div></div>
       </div>
-    </div>
+      <div class="legend label">
+        <span><i class="sw" aria-hidden="true"></i>One of our things</span>
+        <span><i class="sw unsure" aria-hidden="true"></i>Not sure which thing</span>
+        <span><i class="sw furn" aria-hidden="true"></i>Furniture</span>
+        <span class="num" id="thresholds"></span>
+      </div>
+    </section>
 
-    <div class="panel">
-      <h2>Frame feed <span class="right">newest first</span></h2>
+    <section aria-labelledby="feedH">
+      <div class="head"><h2 id="feedH">Frame by frame</h2><span class="label">Newest first</span></div>
       <div class="feed" id="feed"></div>
-    </div>
-  </section>
+    </section>
+  </div>
 
-  <section class="col">
-    <div class="panel">
-      <h2>Memory · Spacetime <span class="right" id="memCount"></span></h2>
+  <div class="col">
+    <section aria-labelledby="memH">
+      <div class="head"><h2 id="memH">What Nemo remembers</h2><span class="label" id="memCount"></span></div>
       <div class="mem" id="mem"></div>
-      <div class="nothing" id="memEmpty">nothing remembered yet</div>
-    </div>
+      <div class="nothing" id="memEmpty">Nothing noted yet.</div>
+    </section>
 
-    <div class="panel">
-      <h2>Last question <span class="right" id="askWhen"></span></h2>
-      <div class="ask" id="ask"><div class="nothing">no question yet · hold the button and ask</div></div>
-    </div>
+    <section aria-labelledby="askH">
+      <div class="head"><h2 id="askH">Last question</h2><span class="label num" id="askWhen"></span></div>
+      <div class="ask" id="ask" aria-live="polite"><div class="label">No question yet. Hold the button and ask.</div></div>
+    </section>
 
-    <div class="panel">
-      <h2>Pipeline</h2>
-      <div class="chips" id="chips"></div>
-    </div>
-  </section>
+    <section aria-labelledby="howH">
+      <div class="head"><h2 id="howH">How it works</h2></div>
+      <dl class="how" id="how"></dl>
+    </section>
+  </div>
 </main>
 
 <script>
 const $ = id => document.getElementById(id);
 const img = $('frame'), cv = $('overlay'), ctx = cv.getContext('2d');
-let shownFrame = -1, lastFrameAt = Date.now(), latest = null;
+let shownFrame = -1, lastFrameAt = 0, latest = null;
 
-const COLORS = { item: '#39ff9a', maybe: '#ffb02e', furn: '#4cc3ff' };
+const C = { navy: '#1B3A5B', cream: '#F7F3EC', coral: '#FF7A59', aqua: '#3B9FA6' };
 
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function words(id) { return String(id || '').replace(/_/g, ' ').replace(/\btv\b/gi, 'TV'); }
+function cap(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
 function ago(ms) {
   const m = Math.round(ms / 60000);
-  if (m < 1) return 'just now'; if (m === 1) return '1 min ago'; if (m < 60) return m + ' min ago';
-  const h = Math.round(m / 60); return h === 1 ? '1 hour ago' : h + ' hours ago';
+  if (m < 1) return 'just now';
+  if (m < 60) return plural(m, 'minute') + ' ago';
+  return plural(Math.round(m / 60), 'hour') + ' ago';
 }
-function clock(ms) { return new Date(ms).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'}); }
-function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function clock(ms) { return new Date(ms).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit', second: '2-digit'}); }
+function secs(ms) { return (ms / 1000).toFixed(1) + ' s'; }
 
 function draw(frame) {
-  // Canvas in the image's own pixel space, so YOLOE's full-frame boxes land exactly.
+  // The canvas works in the photo's own pixels, so YOLOE's full-frame boxes land exactly.
   const W = img.naturalWidth, H = img.naturalHeight;
   if (!W) return;
   cv.width = W; cv.height = H;
   ctx.clearRect(0, 0, W, H);
-  // Letterboxing: the <img> uses object-fit: contain, so match its drawn rectangle.
-  const box = img.getBoundingClientRect();
+  const box = img.getBoundingClientRect();           // the <img> uses object-fit: contain
   const scale = Math.min(box.width / W, box.height / H);
   const dw = W * scale, dh = H * scale;
   cv.style.width = dw + 'px'; cv.style.height = dh + 'px';
   cv.style.left = ((box.width - dw) / 2) + 'px'; cv.style.top = ((box.height - dh) / 2) + 'px';
   if (!frame || !frame.kept) return;
 
-  const lw = Math.max(2, W / 400);
-  ctx.lineWidth = lw; ctx.font = `600 ${Math.round(W / 58)}px ${getComputedStyle(document.body).getPropertyValue('--mono')}`;
-  ctx.textBaseline = 'top';
+  const lw = Math.max(3, W / 300);
+  const fs = Math.round(Math.max(16 / scale, W / 46));  // at least 16px once scaled to the screen
+  ctx.font = `600 ${fs}px Inter, system-ui, sans-serif`;
+  ctx.textBaseline = 'middle';
 
-  const label = (x, y, text, color) => {
-    const pad = lw * 2.5, tw = ctx.measureText(text).width, th = parseInt(ctx.font, 10) * 1.3;
-    const ly = y - th - pad * 2 < 0 ? y + lw : y - th - pad * 2;
-    ctx.fillStyle = 'rgba(7,11,18,.82)'; ctx.fillRect(x - lw / 2, ly, tw + pad * 2, th + pad * 2);
-    ctx.fillStyle = color; ctx.fillRect(x - lw / 2, ly, lw * 1.5, th + pad * 2);
-    ctx.fillStyle = '#e6edf7'; ctx.fillText(text, x + pad + lw, ly + pad);
-  };
-  const rect = (b, color, dash) => {
+  const rect = (b, color, width, dash) => {
     const [x, y, w, h] = b;
-    ctx.save(); ctx.strokeStyle = color; ctx.setLineDash(dash || []);
-    ctx.shadowColor = color; ctx.shadowBlur = lw * 4;
-    ctx.strokeRect(x, y, w, h); ctx.restore();
-    // corner ticks
-    const t = Math.min(w, h) * 0.18; ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = lw * 1.8;
-    [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(([cx,cy,sx,sy]) => {
-      ctx.beginPath(); ctx.moveTo(cx, cy + sy * t); ctx.lineTo(cx, cy); ctx.lineTo(cx + sx * t, cy); ctx.stroke();
-    }); ctx.restore();
+    ctx.save(); ctx.lineJoin = 'round';
+    ctx.setLineDash(dash || []);
+    ctx.strokeStyle = 'rgba(247,243,236,.92)'; ctx.lineWidth = width + lw * 1.6; ctx.strokeRect(x, y, w, h);  // cream halo
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+  };
+  // Labels never overlap: each one tries above its box, then below, then steps further out
+  // until it finds a free strip. A thin line ties a moved label back to its box.
+  const placed = [];
+  const hits = (r) => placed.some(p => r.x < p.x + p.w && r.x + r.w > p.x && r.y < p.y + p.h && r.y + r.h > p.y);
+  const label = (b, text, color, dashed) => {
+    const [x, y, bw, bh] = b;
+    const pad = fs * 0.45, sw = fs * 0.8, h = fs * 1.6, gap = lw * 2;
+    const w = sw + pad * 3 + ctx.measureText(text).width;
+    const lx = Math.min(Math.max(0, x), W - w);
+    const tries = [];
+    for (let i = 0; i < 8; i++) { tries.push(y - h - gap - i * (h + gap)); tries.push(y + bh + gap + i * (h + gap)); }
+    let ly = tries.find(t => t >= 0 && t + h <= H && !hits({x: lx, y: t, w, h}));
+    if (ly === undefined) ly = Math.min(Math.max(0, y - h - gap), H - h);
+    placed.push({x: lx, y: ly, w, h});
+    if (ly + h < y - gap * 1.5 || ly > y + bh + gap * 1.5) {
+      ctx.save(); ctx.strokeStyle = 'rgba(247,243,236,.92)'; ctx.lineWidth = Math.max(2, lw * .6);
+      const ax = Math.min(Math.max(x + bw / 2, lx + h / 2), lx + w - h / 2);
+      ctx.beginPath(); ctx.moveTo(ax, ly + h < y ? ly + h : ly); ctx.lineTo(x + bw / 2, ly + h < y ? y : y + bh); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.fillStyle = 'rgba(247,243,236,.96)';
+    ctx.beginPath(); ctx.roundRect(lx, ly, w, h, h / 2); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = Math.max(2, lw * .7); ctx.setLineDash(dashed ? [lw * 1.5, lw] : []);
+    ctx.beginPath(); ctx.roundRect(lx + pad, ly + (h - sw * .62) / 2, sw, sw * .62, sw * .15); ctx.stroke();
+    ctx.fillStyle = C.navy; ctx.fillText(text, lx + pad * 2 + sw, ly + h / 2 + 1);
+    ctx.restore();
   };
 
-  for (const f of frame.furniture) { rect(f.bbox, COLORS.furn, [lw * 4, lw * 3]); label(f.bbox[0], f.bbox[1], `${f.name} ${(f.conf*100|0)}%`, COLORS.furn); }
+  for (const f of frame.furniture) {
+    rect(f.bbox, C.aqua, lw * .8, [lw * 3, lw * 2.4]);
+    label(f.bbox, `${cap(words(f.name))} ${Math.round(f.conf * 100)}%`, C.aqua, true);
+  }
   for (const s of frame.sightings) {
-    const b = JSON.parse(s.bbox_json); const sure = !!s.item_id; const color = sure ? COLORS.item : COLORS.maybe;
-    rect(b, color);
-    let text = sure ? `${s.item_id.replace('_',' ')} ${(s.det_conf*100|0)}%` : `? ${s.label} ${(s.det_conf*100|0)}%`;
-    if (!sure) { try { const c = JSON.parse(s.candidates_json); if (c.length) text += `  (${c.slice(0,2).map(x => x[0]).join(' / ')})`; } catch {} }
-    if (s.furniture) text += `  → ${s.furniture}`;
-    label(b[0], b[1], text, color);
+    const b = JSON.parse(s.bbox_json), sure = !!s.item_id;
+    rect(b, C.coral, lw * 1.4, sure ? [] : [lw * 3, lw * 2]);
+    let text;
+    if (sure) text = `${cap(words(s.item_id))} ${Math.round(s.det_conf * 100)}%`;
+    else {
+      text = 'Not sure';
+      try { const c = JSON.parse(s.candidates_json); if (c.length) text += ': ' + c.slice(0, 2).map(x => words(x[0])).join(' or '); } catch {}
+    }
+    if (s.furniture) text += ` on the ${words(s.furniture)}`;
+    label(b, text, C.coral, !sure);
   }
 }
 
@@ -224,79 +298,115 @@ function renderFrame(st) {
     shownFrame = f.frame_id; lastFrameAt = Date.now();
     img.onload = () => draw(f);
     img.src = '/live/frame.jpg?f=' + f.frame_id;
+    img.alt = `Nemo's camera, frame ${f.frame_id}` + (f.kept ? '' : ', dropped');
   }
   $('stage').classList.toggle('dropped', !f.kept);
   $('hFrame').textContent = '#' + f.frame_id;
   $('frameTime').textContent = clock(f.ts_ms);
-  $('verdict').textContent = f.kept ? 'KEPT' : 'DROPPED'; $('verdict').className = 'verdict ' + (f.kept ? 'kept' : 'drop');
-  $('reason').textContent = f.kept ? (f.sightings.length ? f.sightings.length + ' sighting' + (f.sightings.length > 1 ? 's' : '') + ' → Spacetime' : 'nothing tracked in view') : f.drop_reason;
-  $('sharp').textContent = f.sharpness.toFixed(1); $('gate').textContent = f.sharpness_gate ? `(gate ${f.sharpness_gate})` : '';
+
+  if (f.kept && f.area_id) {
+    $('area').textContent = cap(words(f.area_id));
+    $('areaWhy').textContent = `DINOv2, ${Math.round(f.area_conf * 100)}% of recent frames`;
+  } else {
+    $('area').textContent = f.kept ? 'Not sure' : 'No change';
+    $('areaWhy').textContent = f.kept ? 'No area matched clearly' : 'Dropped frames don’t vote';
+  }
+
+  $('verdict').innerHTML = f.kept ? '<span class="mark" aria-hidden="true">✓</span>Kept' : '<span class="mark" aria-hidden="true">✕</span>Dropped';
+  $('reason').textContent = f.kept
+    ? (f.sightings.length ? plural(f.sightings.length, 'sighting') + ' sent to Spacetime' : 'None of our things in view')
+    : cap(f.drop_reason);
+
+  $('sharp').textContent = f.sharpness.toFixed(1);
+  $('gate').textContent = f.sharpness_gate ? `Needs ${f.sharpness_gate} or more` : ' ';
   const top = Math.max(60, f.sharpness_gate * 4);
   $('meterFill').style.width = Math.min(100, f.sharpness / top * 100) + '%';
   $('meterGate').style.left = Math.min(100, f.sharpness_gate / top * 100) + '%';
-  const a = $('area');
-  if (f.kept && f.area_id) a.innerHTML = `◎ <span>${esc(f.area_id.replace('_',' '))}</span> <small>${(f.area_conf*100|0)}% · DINOv2</small>`;
-  else a.innerHTML = `◎ <span style="color:var(--dim)">${f.kept ? 'area unknown' : '—'}</span>`;
-  $('nBoxes').textContent = f.kept ? f.sightings.length + f.furniture.length : 0;
-  $('nItems').textContent = f.kept ? f.items_seen.length : 0;
-  $('vms').textContent = f.vision_ms; $('sms').textContent = f.spacetime_ms;
+
+  if (f.kept) {
+    const things = f.sightings.length, furn = f.furniture.length;
+    $('found').textContent = things || furn ? [things ? plural(things, 'thing') : '', furn ? plural(furn, 'piece') + ' of furniture' : ''].filter(Boolean).join(', ') : 'Nothing';
+  } else $('found').textContent = 'Not looked at';
+  $('timing').textContent = `Vision ${f.vision_ms} ms, memory ${f.spacetime_ms} ms`;
 }
 
 function renderMemory(st) {
-  const mem = st.memory || []; $('memCount').textContent = mem.length ? mem.length + ' item' + (mem.length > 1 ? 's' : '') : '';
-  $('memEmpty').style.display = mem.length ? 'none' : ''; $('memEmpty').textContent = st.memory_error ? 'memory unavailable: ' + st.memory_error : 'nothing remembered yet';
-  const now = st.now_ms, fresh = new Set();
+  const mem = st.memory || [], now = st.now_ms;
+  $('memCount').textContent = mem.length ? plural(mem.length, 'thing') : '';
+  $('memEmpty').style.display = mem.length ? 'none' : '';
+  $('memEmpty').textContent = st.memory_error ? 'Can’t read the memory right now: ' + st.memory_error : 'Nothing noted yet.';
   $('mem').innerHTML = mem.map(m => {
-    const isFresh = now - m.last_seen_ts_ms < 15000; if (isFresh) fresh.add(m.item_id);
+    const fresh = now - m.last_seen_ts_ms < 15000;
     const thumb = m.thumb_b64 ? `style="background-image:url(data:image/jpeg;base64,${m.thumb_b64})"` : '';
-    return `<div class="card ${isFresh ? 'fresh' : ''}">
-      <div class="thumb" ${thumb}>${m.thumb_b64 ? '' : '◌'}</div>
-      <div class="body"><div class="name">${esc(m.name)}</div>
-      <div class="spot">${esc(m.spot || (m.state === 'placed' ? 'seen, place unknown' : m.state))}</div>
-      ${m.spot_description ? `<div class="spot" style="color:var(--area);font-style:italic">“${esc(m.spot_description)}”</div>` : ''}
-      <div class="meta"><span>${esc(ago(now - m.last_seen_ts_ms))}</span><b>${(m.confidence*100|0)}%</b></div></div></div>`;
+    const where = m.spot_description || m.spot || (m.state === 'placed' ? 'Seen, but not sure where' : m.state);
+    const extra = m.spot_description && m.area && !m.spot_description.toLowerCase().includes(m.area.toLowerCase()) ? ` in the ${esc(m.area)} area` : '';
+    return `<div class="thing ${fresh ? 'fresh' : ''}">
+      <div class="thumb" ${thumb} role="img" aria-label="${esc(m.name)} snapshot"></div>
+      <div><h3>${esc(cap(m.name))}${fresh ? '<span class="tag">Just seen</span>' : ''}</h3>
+        <div class="spot">${esc(cap(where))}${extra}.</div>
+        <div class="label num">Last seen ${esc(ago(now - m.last_seen_ts_ms))}, confidence ${Math.round(m.confidence * 100)}%</div></div>
+    </div>`;
   }).join('');
 }
 
 function renderFeed(st) {
   $('feed').innerHTML = (st.feed || []).map(r => {
-    const what = r.kept
-      ? (r.seen.length ? r.seen.map(s => s.item_id ? `${esc(s.item_id.replace('_',' '))}${s.furniture ? ' <span class="f">@' + esc(s.furniture) + '</span>' : ''}` : `<span class="m">? ${esc(s.label)}</span>`).join(', ') : '<span class="dimmed">nothing tracked in view</span>')
-        + (r.area_id ? ` <span class="dimmed">· ${esc(r.area_id.replace('_',' '))}</span>` : '')
-      : `<span class="dimmed">${esc(r.reason)}</span>`;
-    return `<div class="row"><span class="id">#${r.frame_id}</span><span class="${r.kept ? 'k' : 'd'}">${r.kept ? 'KEPT' : 'DROP'} ${r.sharpness}</span><span class="what">${what}</span><span class="ms">${Math.round(r.vision_ms)} ms</span></div>`;
+    let what;
+    if (!r.kept) what = `<span class="q">${esc(cap(r.reason))}</span>`;
+    else {
+      what = r.seen.length
+        ? r.seen.map(s => s.item_id ? esc(cap(words(s.item_id))) + (s.furniture ? ' on the ' + esc(words(s.furniture)) : '') : `<span class="q">not sure (${esc(s.label)})</span>`).join(', ')
+        : '<span class="q">None of our things</span>';
+      if (r.area_id) what += `<span class="q">, ${esc(words(r.area_id))} area</span>`;
+    }
+    return `<div class="row"><span class="id num">#${r.frame_id}</span>
+      <span class="v ${r.kept ? '' : 'drop'}">${r.kept ? '✓ Kept' : '✕ Dropped'} <span class="q num">${r.sharpness}</span></span>
+      <span class="what">${what}</span><span class="ms num">${Math.round(r.vision_ms)} ms</span></div>`;
   }).join('');
 }
 
 function renderAsk(st) {
   const a = st.last_ask; if (!a || !a.answer) return;
-  $('askWhen').textContent = clock(a.at_ms) + ' · ' + a.device;
-  $('ask').innerHTML = `<div class="q">${esc(a.question || 'nothing heard')}</div><div class="a">${esc(a.answer)}</div>
-    <div class="t"><span>hear ${a.stt_ms} ms</span><span>think ${a.agent_ms} ms</span><span>speak ${a.tts_ms} ms · ${esc(a.voice)}</span><span><b style="color:var(--muted)">${(a.total_ms/1000).toFixed(1)} s</b></span></div>`;
+  $('askWhen').textContent = clock(a.at_ms) + (a.device ? ', ' + a.device : '');
+  const voice = a.voice === 'elevenlabs' ? 'ElevenLabs' : 'Piper';
+  $('ask').innerHTML = `<div class="q">“${esc(a.question || 'Nothing heard')}”</div>
+    <div class="a">${esc(a.answer)}</div>
+    <div class="t label num">Heard in ${secs(a.stt_ms)}, answered in ${secs(a.agent_ms)}, spoken in ${secs(a.tts_ms)} (${voice}). ${secs(a.total_ms)} in all.</div>`;
 }
 
 function renderHud(st) {
-  const s = st.stats; $('hKept').textContent = s.kept; $('hProc').textContent = s.processed;
-  $('hVision').textContent = s.avg_vision_ms_last_20 == null ? '–' : Math.round(s.avg_vision_ms_last_20);
-  $('hSource').textContent = st.config.frame_source;
-  $('thresholds').textContent = `blur ≥ ${st.config.sharpness_gate} · conf ≥ ${st.config.detect_conf} · ${st.config.detect_imgsz}px`;
-  $('chips').innerHTML = [
-    ['frames', `${st.config.frame_source}${st.config.frame_source === 'pull' ? ' · best of ' + st.config.burst_frames : ''}`],
-    ['detect', 'YOLOE yoloe-26s-seg'], ['place', 'DINOv2 small'], ['memory', 'SpacetimeDB reducers'],
-    ['hear', 'whisper ' + st.config.stt_model], ['think', 'Nemotron 3.5 Lightning'], ['speak', st.config.tts_provider === 'elevenlabs' ? 'ElevenLabs' : 'Piper (local)'],
-    ['look', st.vl && st.vl.on ? `Nemotron Super VL · ${st.vl.calls} calls${st.vl.avg_ms ? ' · ' + st.vl.avg_ms + ' ms' : ''}${st.vl.last ? ' · “' + st.vl.last + '”' : ''}` : 'Super VL off'],
-  ].map(([k, v]) => `<span class="chip">${k} <b>${esc(v)}</b></span>`).join('');
-  const stale = Date.now() - lastFrameAt > 10000;  // vision on CPU can take ~5 s a frame
-  $('livePill').classList.toggle('stale', stale); $('liveText').textContent = stale ? 'NO FRAMES' : 'LIVE';
+  const s = st.stats, cfg = st.config;
+  $('hKept').textContent = s.kept; $('hProc').textContent = s.processed;
+  $('hVision').textContent = s.avg_vision_ms_last_20 == null ? 'waiting' : Math.round(s.avg_vision_ms_last_20) + ' ms';
+  $('hSource').textContent = cfg.frame_source === 'pull' ? `pulled, best of ${cfg.burst_frames}` : 'posted by Nemo';
+  $('thresholds').textContent = `YOLOE ${Math.round(cfg.detect_conf * 100)}% or more at ${cfg.detect_imgsz} px`;
+  const vl = st.vl || {};
+  const rows = [
+    ['Frames', cfg.frame_source === 'pull' ? `The laptop pulls ${cfg.burst_frames} frames a second from Nemo and keeps the sharpest` : 'Nemo posts a frame each second'],
+    ['Notices things', 'YOLOE (yoloe-26s-seg), our things and the furniture they’re on'],
+    ['Knows the area', 'DINOv2 small, against reference photos of each area'],
+    ['Remembers', 'SpacetimeDB reducers: 2 sightings in a row in the same spot'],
+    ['Looks closer', vl.on ? `Nemotron 3.5 Super VL in the background: ${plural(vl.calls || 0, 'look')}${vl.avg_ms ? ', about ' + secs(vl.avg_ms) + ' each' : ''}${vl.last ? ', last said “' + vl.last + '”' : ''}` : 'Nemotron 3.5 Super VL is off'],
+    ['Hears', `Whisper ${cfg.stt_model}`],
+    ['Answers', 'Nemotron 3.5 Lightning, using the memory as tools'],
+    ['Speaks', cfg.tts_provider === 'elevenlabs' ? 'ElevenLabs' : 'Piper, on the laptop'],
+  ];
+  $('how').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('');
+  const stale = !lastFrameAt || Date.now() - lastFrameAt > 10000;  // vision on CPU can take a few seconds
+  $('status').classList.toggle('stale', stale);
+  $('statusText').textContent = stale ? (lastFrameAt ? 'No new frames' : 'Waiting for frames') : 'Live';
 }
 
 async function tick() {
   try {
     const st = await (await fetch('/live/state', {cache: 'no-store'})).json();
     renderFrame(st); renderMemory(st); renderFeed(st); renderAsk(st); renderHud(st);
-  } catch (e) { $('livePill').classList.add('stale'); $('liveText').textContent = 'BACKEND?'; }
+  } catch (e) {
+    $('status').classList.add('stale'); $('statusText').textContent = 'Can’t reach the laptop';
+  }
 }
 new ResizeObserver(() => draw(latest)).observe($('stage'));
+document.fonts && document.fonts.ready.then(() => draw(latest));
 tick(); setInterval(tick, 500);
 </script>
 </body>
